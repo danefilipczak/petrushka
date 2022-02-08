@@ -1,7 +1,7 @@
 (ns petrushka.utils.string
   (:require [hyperfiddle.rcf :refer [tests]]))
 
-(defn >> [string env]
+(defn >> [env string]
   (->> string
        (re-seq #"\{\{[a-z]*\}\}")
        (map (partial drop-last 2))
@@ -11,6 +11,6 @@
        (apply format (clojure.string/replace string #"\{\{[a-z]*\}\}" "%s"))))
 
 (tests 
- (>> "a b c d {{e}} f {{g}}" {:e "E" :g "G"}) := "a b c d E f G"
- (>> "a b c d {{e}} f {{g}}" {:e "E" :g [:a :b :c]}) := "a b c d E f [:a :b :c]"
+ (>> {:e "E" :g "G"} "a b c d {{e}} f {{g}}") := "a b c d E f G"
+ (>> {:e "E" :g [:a :b :c]} "a b c d {{e}} f {{g}}") := "a b c d E f [:a :b :c]"
  )

@@ -1,7 +1,8 @@
 (ns petrushka.main
   (:require [hyperfiddle.rcf :refer [tests]]
             [failjure.core :as f]
-            [clojure2minizinc.core :as mz]))
+            [clojure2minizinc.core :as mz]
+            [petrushka.utils.string :refer [>>]]))
 
 (comment
   ;; the representation used for MEDN should be pure, but with extensive caching that is core-async aware.
@@ -35,16 +36,16 @@
 
 (tests
  (extend-cvar-table :a [:number] {}) := {:a [:number]}
-
- (:message (extend-cvar-table :a [:number] {:a [:set (range 10)]}))
- := [:inconsistent-types :set :number]
-
- (extend-cvar-table :a [:number (range 12)] {:a [:number]})
- := {:a [:number (range 12)]}
+ (:message (extend-cvar-table :a [:number] {:a [:set (range 10)]})) := [:inconsistent-types :set :number]
+ (extend-cvar-table :a [:number (range 12)] {:a [:number]}) := {:a [:number (range 12)]}
  )
 
-(defn extend-cvar-table-from-find [{:keys [find]} cvar-table]
-  (assert (coll? find))
+(comment
+
+  
+  )
+
+(defn extend-cvar-table-from-find [find cvar-table]
   (->> find
        (into #{})
        (reduce 
@@ -58,37 +59,48 @@
         cvar-table)))
 
 (tests
- (let [example {:find [[:a [(range 0 12) :number]]
-                       [:b [:set (range 12)]]
-                       :c]
-                :where [[:not-in :a (range 12)]
-                        [:in :a (range 13)]]
-                :solve [:minimize [:+ :a 22]] ;; optional - defaults to satisfy
-                :return 3 ;; optional - defaults to 3
-                }]
-   (extend-cvar-table-from-find example {}) := {:a [:number (range 0 12)]
-                             :b [:set (range 0 12)]
-                             :c [nil nil]}
+ 
+ (extend-cvar-table-from-find [[:a [(range 0 12) :number]]
+                               [:b [:set (range 12)]]
+                               :c] {}) := {:a [:number (range 0 12)]
+                                              :b [:set (range 0 12)]
+                                              :c [nil nil]}
 
-   (extend-cvar-table-from-find (assoc example :find {:a [(range 0 12)]
-                                      :b [:set (range 0 12)]
-                                      :c nil})
-                {})
-   := {:a [nil (range 0 12)]
-       :b [:set (range 0 12)]
-       :c [nil nil]}
+ (extend-cvar-table-from-find
+  {:a [(range 0 12)]
+   :b [:set (range 0 12)]
+   :c nil}
+  {})
+ := {:a [nil (range 0 12)]
+     :b [:set (range 0 12)]
+     :c [nil nil]}
 
-   (let [duplicate-variables (extend-cvar-table-from-find (update example :find conj [:b :number]) {})]
-     (tests
-      (f/failed? duplicate-variables) := true
-      (:message duplicate-variables) := [:inconsistent-types :number :set]))))
+ (let [duplicate-variables (extend-cvar-table-from-find [[:a [(range 0 12) :number]]
+                                                         [:b [:set (range 12)]]
+                                                         :c
+                                                         [:b :number]] {})]
+   (tests
+    (f/failed? duplicate-variables) := true
+    (:message duplicate-variables) := [:inconsistent-types :number :set])))
 
 (def ops
-  {:+ [:number [2] [:number]] ;; high airity is optional, assumed to be infinite.
-   :in [:boolean [2 2] [:number :set]] 
+  {:-> [:boolean [1] [:boolean]] ;;left implies right
+   :<-> [:boolean [1] [:boolean]] ;;mutual implication... all must be true, or false
    :not [:boolean [1 1] [:boolean]]
+   :true? [:boolean [1 1] [:boolean]]
+   :false? [:boolean [1 1] [:boolean]]
+   :or [:boolean [1] [:boolean]]
    :and [:boolean [1] [:boolean]]
-   := [:boolean [2] [:number]]})
+   :xor [:boolean [2 2] [:boolean]] ;; arguments must differ
+   :+ [:number [2] [:number]] ;; high airity is optional, assumed to be infinite.
+   :in [:boolean [2 2] [:number :set]]
+   :set= [:boolean [2] [:set]]
+   := [:boolean [1] [:number]]
+   :> [:boolean [1] [:number]]
+   :< [:boolean [1] [:number]]
+   :>= [:boolean [1] [:number]]
+   :<= [:boolean [1] [:number]]
+   :if [:boolean [3 3] [:boolean]]}) ;; the rightmost airity repeats
 
 (tests
  (doall
@@ -98,32 +110,48 @@
 
 (def cvar? keyword?)
 
+(defn type-of-expression [expression cvar-table]
+  (cond
+    (cvar? expression) (get-in cvar-table [expression 0])
+    (vector? expression) (get-in ops [(first expression) 0]) ;; this could recur here when the expression is of type any
+    (number? expression) :number
+    (set? expression) :set
+    (boolean? expression) :boolean))
+
 (defn extend-cvar-table-from-operator-expression [cvar-table expression]
   (let [[_ [low-airity high-airity] [left-type right-type :as arg-types]] (get ops (first expression))
         extend-cvar-table-from-arg (fn [cvar-table arg-type-pair]
                                      (if (f/failed? arg-type-pair)
                                        (reduced arg-type-pair)
-                                       (let [[arg type] arg-type-pair
-                                             known-type-of-arg (cond
-                                                                 (cvar? arg) (get-in cvar-table [arg 0])
-                                                                 (vector? arg) (get-in ops [(first arg) 0])
-                                                                 (number? arg) :number
-                                                                 (set? arg) :set)]
+                                       (let [[arg operator-type] arg-type-pair
+                                             known-type-of-arg (type-of-expression arg cvar-table)]
                                          (cond
-                                           (and known-type-of-arg (not= known-type-of-arg type))
+                                           (= operator-type :any) (if (cvar? arg)
+                                                                    (extend-cvar-table arg nil cvar-table)
+                                                                    cvar-table)
+
+                                           (and known-type-of-arg
+                                                operator-type
+                                                (not= known-type-of-arg operator-type))
                                            (f/fail [:inconsistent-types (str "type of " arg " bound to " known-type-of-arg
-                                                                             " but used as " type " in expression " expression)])
+                                                                             " but used as " operator-type " in expression " expression)])
 
                                            (cvar? arg)
-                                           (extend-cvar-table arg [type] cvar-table)
+                                           (extend-cvar-table arg [operator-type] cvar-table)
 
                                            :else cvar-table))))]
     ;; todo airity checking
-    (->> (interleave (rest expression) (if right-type arg-types (repeat left-type)))
+    (->> (interleave (rest expression) (if right-type
+                                         (conj (repeat right-type) left-type)
+                                         (repeat left-type)))
          (partition 2)
          (reduce extend-cvar-table-from-arg cvar-table))))
 
 (tests
+ (extend-cvar-table-from-operator-expression {} [:if :a :b :c]) := {:a [:boolean], :b [:boolean], :c [:boolean]}
+ (f/failed? (extend-cvar-table-from-operator-expression {} [:xor [:if :a [:in 1 :s] false] [:in :b :s]])) := false
+ (extend-cvar-table-from-operator-expression {} [:if :a [:> 1 2]]) := {:a [:boolean]}
+ (extend-cvar-table-from-operator-expression {} [:if :a :c false]) := {:a [:boolean], :c [:boolean]}
  (extend-cvar-table-from-operator-expression {} [:+ :a :b]) := {:a [:number], :b [:number]}
  (f/failed? (extend-cvar-table-from-operator-expression {:a [:set]} [:+ :a :b])) := true
  (f/failed? (extend-cvar-table-from-operator-expression {:a [:set]} [:in :b :a])) := false
@@ -140,41 +168,87 @@
 
     :else cvar-table))
 
-(tests 
+(tests
+ (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:in :a :b] [:in :a :c]])) := true
+ (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:in :d :b] [:in :b :c]])) := true
+ (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:in :d :b] [:in :d :c]])) := false
+
  (extend-cvar-table-from-constraint {} [:in :a :b]) := {:a [:number], :b [:set]}
-
  (f/failed? (extend-cvar-table-from-constraint {} [:in [:+ :a :b] :b])) := true
-
- (extend-cvar-table-from-constraint {:a [:number]} [:and 
-                                                    [:= [:+ 1 :a] 2] 
+ (extend-cvar-table-from-constraint {:a [:number]} [:and
+                                                    [:= [:+ 1 :a] 2]
                                                     [:in :a :b]])
  := {:a [:number nil], :b [:set]}
 
- (f/failed? (extend-cvar-table-from-constraint {:a [:number]} [:and
-                                                               [:in [:+ [:+ 1 10] :c] :d]
-                                                               [:= [:+ 1 :a] 2]
-                                                               [:in :a :b]]))
+ (f/failed?
+  (extend-cvar-table-from-constraint
+   {:a [:number]}
+   [:and
+    [:in [:+ [:+ 1 10] :c] :d]
+    [:= [:+ 1 :a] 2]
+    [:in :a :b]]))
  := false
 
- (f/failed? (extend-cvar-table-from-constraint {:a [:number]} [:and
-                                                               [:in [:+ [:+ 1 10] :b] :d]
-                                                               [:= [:+ 1 :a] 2]
-                                                               [:in :a :b]]))
+ (f/failed?
+  (extend-cvar-table-from-constraint
+   {:a [:number]}
+   [:and
+    [:in [:+ [:+ 1 10] :b] :d] ;; :b used as a number
+    [:= [:+ 1 :a] 2]
+    [:in :a :b]]));; :b used as a set
  := true)
+
+(defn extend-cvar-table-from-where [where cvar-table]
+  (reduce
+   (fn [cvar-table constraint]
+     (if (f/failed? constraint)
+       (reduced constraint)
+       (if-not (= :boolean (type-of-expression constraint cvar-table))
+         (f/fail [:malformed-constraint "constraints must be of type boolean"])
+         (extend-cvar-table-from-constraint cvar-table constraint))))
+   cvar-table
+   where))
 
 (defn interpret [{:keys [where find]}]
   (f/ok->> {}
            (extend-cvar-table-from-find find)
            (extend-cvar-table-from-where where)
            ;; validate that everything has an associated type and range, if required
-           ;; translate to minizinc, using the lvar table for var declarations and the where clause for constraints 
+           ;; translate to flatzinc, using the lvar table for var declarations and the where clause for constraints 
            ;; send over the wire.
-           )
+           ))
 
-  #_(f/attempt-all [cvars-extended-from-find (extend-cvar-table-from-find find {})
-                  cvars-extended-from-where (extend-cvar-table-from-where where cvars-extended-from-find)]))
+(defn interpret-cvar-table-kv [[k v]])
+
+(defn cvar->string [cvar]
+  (name cvar))
+
+(defn seq->string [s]
+  (>> {:elements (apply str (interpose "," s))} "{{{elements}}}"))
+
+(tests
+ (seq->string (range 12)) := "{0,1,2,3,4,5,6,7,8,9,10,11}"
+ )
+
+(tests
+ (->> ct
+      (map (fn [[cvar [type range]]]
+             (let [env {:range (seq->string range)
+                        :cvar (cvar->string cvar)}
+                   >>* (partial >> env)]
+               (case type
+                 :set (>>* "var set of {{range}}: {{cvar}};")
+                 :number (if range
+                           (>>* "var {{range}}: {{cvar}};")
+                           (>>* "var long: {{cvar}};"))
+                 cvar)))))
+
+ (def ct (interpret {:find [[:a [:set (range 0 12)]]]
+                             :where [[:in :b :a]]}))
+ )
 
 (comment
+  
   
   (extend-cvar-table-from-constraint {} [:a [:b 1 2 [:= 1 2]]])
 
@@ -195,10 +269,14 @@
    ))
 
 (comment
-  
+  [:for [:element :d
+         :when [:> :element 4]]
+   [:subset]]
+
+
   (hyperfiddle.rcf/enable!)
 
-  
+
   ;; let's translate our first minizinc model into something that you'd like to be able to call from clojure.
 
 ;; set of int: index_set = 1..4;
