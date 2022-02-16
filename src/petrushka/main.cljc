@@ -1,22 +1,9 @@
 (ns petrushka.main
   (:require [hyperfiddle.rcf :refer [tests]]
             [failjure.core :as f]
+            [petrushka.utils.cvar :refer [cvar?]]
             [clojure2minizinc.core :as mz]
-            [petrushka.utils.string :refer [>>]]))
-
-(comment
-  ;; the representation used for MEDN should be pure, but with extensive caching that is core-async aware.
-  ;; it should be able to write back to an open channel when the computation is taking more than x milliseconds.
-  ;; the cache is possible via function calls by value -> it is the result of the get that's cached, not the get path 
-
-  ;; this should be a general purpose utility, 
-  ;; the goal of which is to send incremental progress updates back to the main thread so it can re-render, at a specified frame-rate
-  ;; the computation should be async if neccessary... so that we can implement API backends in a way that's still permormant.
-  ;; should be written in such a way that functions that are cached are returned immediatley, while functions that need to request asynchronous resources make their requests in parallel. Let it be up to the processor how they decide to thread it. 
-
-  ;; the other idea, not immediatley applicable here, is that your rautavaara renderers are effectivley just slicing time into a certain control rate... probably 60 hz, or however quickly you can get it. This could be part of the time library. 
-  
-  )
+            [petrushka.operations :as ops]))
 
 (defn force-sequence [v]
   (if (sequential? v) v [v]))
@@ -83,43 +70,21 @@
     (f/failed? duplicate-variables) := true
     (:message duplicate-variables) := [:inconsistent-types :number :set])))
 
-(def ops
-  {:-> [:boolean [1] [:boolean]] ;;left implies right
-   :<-> [:boolean [1] [:boolean]] ;;mutual implication... all must be true, or false
-   :not [:boolean [1 1] [:boolean]]
-   :true? [:boolean [1 1] [:boolean]]
-   :false? [:boolean [1 1] [:boolean]]
-   :or [:boolean [1] [:boolean]]
-   :and [:boolean [1] [:boolean]]
-   :xor [:boolean [2 2] [:boolean]] ;; arguments must differ
-   :+ [:number [2] [:number]] ;; high airity is optional, assumed to be infinite.
-   :in [:boolean [2 2] [:number :set]]
-   :set= [:boolean [2] [:set]]
-   := [:boolean [1] [:number]]
-   :> [:boolean [1] [:number]]
-   :< [:boolean [1] [:number]]
-   :>= [:boolean [1] [:number]]
-   :<= [:boolean [1] [:number]]
-   :if [:boolean [3 3] [:boolean]]}) ;; the rightmost airity repeats
-
-(tests
- (doall
-  (for [[_op [_ airity-bounds arg-types]] ops]
-    (when (= 2 (count arg-types)) ;; the presence of both a left and right args type implies that it is a binary operator and the airity must be no more or less than 2
-      (tests airity-bounds := [2 2])))))
-
-(def cvar? keyword?)
+(comment
+  (< 1 2)
+  
+  )
 
 (defn type-of-expression [expression cvar-table]
   (cond
     (cvar? expression) (get-in cvar-table [expression 0])
-    (vector? expression) (get-in ops [(first expression) 0]) ;; this could recur here when the expression is of type any
+    (vector? expression) (get-in ops/all [(first expression) 0]) ;; this could recur here when the expression is of type any
     (number? expression) :number
     (set? expression) :set
     (boolean? expression) :boolean))
 
 (defn extend-cvar-table-from-operator-expression [cvar-table expression]
-  (let [[_ [low-airity high-airity] [left-type right-type :as arg-types]] (get ops (first expression))
+  (let [[_ [low-airity high-airity] [left-type right-type :as arg-types]] (get ops/all (first expression))
         extend-cvar-table-from-arg (fn [cvar-table arg-type-pair]
                                      (if (f/failed? arg-type-pair)
                                        (reduced arg-type-pair)
@@ -204,7 +169,7 @@
      (if (f/failed? constraint)
        (reduced constraint)
        (if-not (= :boolean (type-of-expression constraint cvar-table))
-         (f/fail [:malformed-constraint "constraints must be of type boolean"])
+         (f/fail [:malformed-constraint "constraints must be boolean expressions"])
          (extend-cvar-table-from-constraint cvar-table constraint))))
    cvar-table
    where))
@@ -220,32 +185,6 @@
 
 (defn interpret-cvar-table-kv [[k v]])
 
-(defn cvar->string [cvar]
-  (name cvar))
-
-(defn seq->string [s]
-  (>> {:elements (apply str (interpose "," s))} "{{{elements}}}"))
-
-(tests
- (seq->string (range 12)) := "{0,1,2,3,4,5,6,7,8,9,10,11}"
- )
-
-(tests
- (->> ct
-      (map (fn [[cvar [type range]]]
-             (let [env {:range (seq->string range)
-                        :cvar (cvar->string cvar)}
-                   >>* (partial >> env)]
-               (case type
-                 :set (>>* "var set of {{range}}: {{cvar}};")
-                 :number (if range
-                           (>>* "var {{range}}: {{cvar}};")
-                           (>>* "var long: {{cvar}};"))
-                 cvar)))))
-
- (def ct (interpret {:find [[:a [:set (range 0 12)]]]
-                             :where [[:in :b :a]]}))
- )
 
 (comment
   

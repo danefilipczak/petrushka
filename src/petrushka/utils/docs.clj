@@ -1,5 +1,6 @@
 (ns petrushka.utils.docs
-  (:require [petrushka.main :as main]))
+  (:require [petrushka.main :as main]
+            [petrushka.operations :as ops]))
 
 (defn pluralize-keyword [k]
   (-> k
@@ -12,7 +13,7 @@
   (let [lines (-> (slurp "readme.md")
                   (clojure.string/split #"\n"))
         good-lines (take-while (partial not= "# Operations") lines)
-        operation-table (let [rows (for [[op [return-type [low-airity high-airity] [left-type right-type]]] main/ops]
+        operation-table (let [rows (for [[op [return-type [low-airity high-airity] [left-type right-type]]] ops/all]
                                      [op
                                       return-type
                                       (cond-> (take (+ (- (or high-airity low-airity) low-airity)
