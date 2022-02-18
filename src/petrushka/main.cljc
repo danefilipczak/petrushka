@@ -114,12 +114,12 @@
 
 (tests
  (extend-cvar-table-from-operator-expression {} [:if :a :b :c]) := {:a [:boolean], :b [:boolean], :c [:boolean]}
- (f/failed? (extend-cvar-table-from-operator-expression {} [:xor [:if :a [:in 1 :s] false] [:in :b :s]])) := false
+ (f/failed? (extend-cvar-table-from-operator-expression {} [:xor [:if :a [:contains? :s 1] false] [:contains? :s :b]])) := false
  (extend-cvar-table-from-operator-expression {} [:if :a [:> 1 2]]) := {:a [:boolean]}
  (extend-cvar-table-from-operator-expression {} [:if :a :c false]) := {:a [:boolean], :c [:boolean]}
  (extend-cvar-table-from-operator-expression {} [:+ :a :b]) := {:a [:number], :b [:number]}
  (f/failed? (extend-cvar-table-from-operator-expression {:a [:set]} [:+ :a :b])) := true
- (f/failed? (extend-cvar-table-from-operator-expression {:a [:set]} [:in :b :a])) := false
+ (f/failed? (extend-cvar-table-from-operator-expression {:a [:set]} [:contains? :a :b])) := false
  )
 
 (defn extend-cvar-table-from-constraint [cvar-table constraint]
@@ -134,33 +134,33 @@
     :else cvar-table))
 
 (tests
- (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:in :a :b] [:in :a :c]])) := true
- (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:in :d :b] [:in :b :c]])) := true
- (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:in :d :b] [:in :d :c]])) := false
+ (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:contains? :b :a] [:contains? :c :a]])) := true
+ (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:contains? :b :d] [:contains? :c :b]])) := true
+ (f/failed? (extend-cvar-table-from-constraint {} [:if [:not :a] [:contains? :b :d] [:contains? :c :d]])) := false
 
- (extend-cvar-table-from-constraint {} [:in :a :b]) := {:a [:number], :b [:set]}
- (f/failed? (extend-cvar-table-from-constraint {} [:in [:+ :a :b] :b])) := true
+ (extend-cvar-table-from-constraint {} [:contains? :b :a]) := {:a [:number], :b [:set]}
+ (f/failed? (extend-cvar-table-from-constraint {} [:contains? :b [:+ :a :b]])) := true
  (extend-cvar-table-from-constraint {:a [:number]} [:and
                                                     [:= [:+ 1 :a] 2]
-                                                    [:in :a :b]])
+                                                    [:contains? :b :a]])
  := {:a [:number nil], :b [:set]}
 
  (f/failed?
   (extend-cvar-table-from-constraint
    {:a [:number]}
    [:and
-    [:in [:+ [:+ 1 10] :c] :d]
+    [:contains? :d [:+ [:+ 1 10] :c]]
     [:= [:+ 1 :a] 2]
-    [:in :a :b]]))
+    [:contains? :b :a]]))
  := false
 
  (f/failed?
   (extend-cvar-table-from-constraint
    {:a [:number]}
    [:and
-    [:in [:+ [:+ 1 10] :b] :d] ;; :b used as a number
+    [:contains? :d [:+ [:+ 1 10] :b]] ;; :b used as a number
     [:= [:+ 1 :a] 2]
-    [:in :a :b]]));; :b used as a set
+    [:contains? :b :a]]));; :b used as a set
  := true)
 
 (defn extend-cvar-table-from-where [where cvar-table]
@@ -200,7 +200,7 @@
                        [:b [:set (range 12)]]
                        :c]
                 :where [[:not-in :a (range 12)]
-                        [:in :a (range 13)]]
+                        [:contains? (range 13) :a]]
                 :solve [:minimize [:+ :a 22]] ;; optional - defaults to satisfy
                 :return 3 ;; optional - defaults to 3
                 }]
@@ -282,7 +282,7 @@
           ;; is it safe to assume that we don't have to collect integer type hints?
           ]
    :where [[:not-in :a (range 12)]
-           [:in :a (range 13)]]
+           [:contains? (range 13) :a]]
    :solve [:minimize [:+ :a 22]] ;; optional - defaults to satisfy
    :return 3 ;; optional - defaults to 3
    }

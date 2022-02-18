@@ -6,5 +6,6 @@
        (not (contains? (set (keys ops/all)) e))))
 
 (comment
-  (cvar? :+)
+  (cvar? :+) := false
+  (cvar? :not-an-op) := true
   )

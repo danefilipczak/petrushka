@@ -2,24 +2,24 @@
   (:require [hyperfiddle.rcf :refer [tests]]))
 
 (def all
-  {:-> [:boolean [1] [:boolean]] ;;left implies right
-   :<-> [:boolean [1] [:boolean]] ;;mutual implication... all must be true, or false
+  {:when [:boolean [2 2] [:boolean]]
+   :iff [:boolean [2] [:boolean]]
    :not [:boolean [1 1] [:boolean]]
    :true? [:boolean [1 1] [:boolean]]
    :false? [:boolean [1 1] [:boolean]]
    :or [:boolean [1] [:boolean]]
    :and [:boolean [1] [:boolean]]
-   :xor [:boolean [2 2] [:boolean]] ;; arguments must differ
-   :+ [:number [2] [:number]] ;; high airity is optional, assumed to be infinite.
+   :xor [:boolean [2] [:boolean]]
+   :+ [:number [2] [:number]]
    :- [:number [2] [:number]]
-   :in [:boolean [2 2] [:number :set]]
+   :contains? [:boolean [2 2] [:set :number]]
    :set= [:boolean [2] [:set]]
    := [:boolean [1] [:number]]
    :> [:boolean [1] [:number]]
    :< [:boolean [1] [:number]]
    :>= [:boolean [1] [:number]]
    :<= [:boolean [1] [:number]]
-   :if [:boolean [3 3] [:boolean]]}) ;; the rightmost airity repeats
+   :if [:boolean [3 3] [:boolean]]}) 
 
 (tests
  (doall

@@ -16,7 +16,7 @@ https://github.com/helins/wasm.cljc
 
 
 ```clojure
-(p/solve-where [[:in :a (range 0 6)]
+(p/solve-where [[:contains (range 0 6) :a]
                 [:= 3 [:+ 2 :a]])
 => {:a 1}
 ```
@@ -29,16 +29,21 @@ https://github.com/helins/wasm.cljc
 # Operations
 | op | returns | args |
 | --- | --- | --- |
-|:->|:boolean|:boolean:boolean:&:booleans|
-|:if|:any|:boolean:any:any|
+|:<=|:boolean|:number:&:numbers|
+|:when|:boolean|:boolean:boolean|
+|:>|:boolean|:number:&:numbers|
+|:if|:boolean|:boolean:boolean:boolean|
+|:-|:number|:number:number:&:numbers|
 |:or|:boolean|:boolean:&:booleans|
 |:not|:boolean|:boolean|
 |:true?|:boolean|:boolean|
-|:<->|:boolean|:boolean:boolean:&:booleans|
-|:xor|:boolean|:boolean:boolean|
+|:>=|:boolean|:number:&:numbers|
+|:iff|:boolean|:boolean:boolean:&:booleans|
+|:xor|:boolean|:boolean:boolean:&:booleans|
 |:+|:number|:number:number:&:numbers|
 |:false?|:boolean|:boolean|
 |:and|:boolean|:boolean:&:booleans|
+|:contains?|:boolean|:set:number|
 |:=|:boolean|:number:&:numbers|
+|:<|:boolean|:number:&:numbers|
 |:set=|:boolean|:set:set:&:sets|
-|:in|:boolean|:number:set|
