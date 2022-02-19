@@ -1,6 +1,5 @@
 (ns petrushka.utils.docs
-  (:require [petrushka.main :as main]
-            [petrushka.operations :as ops]))
+  (:require [petrushka.operations :as ops]))
 
 (defn pluralize-keyword [k]
   (-> k

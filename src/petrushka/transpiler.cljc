@@ -2,6 +2,7 @@
   (:require
    [petrushka.utils.string :refer [>>]]
    [failjure.core :as f]
+   [clojure.string :as string]
    [hyperfiddle.rcf :refer [tests]]
    [petrushka.utils.cvar :refer [cvar?]]
    [petrushka.operations :as ops]))
@@ -25,17 +26,17 @@
                   :set (>>* "var set of {{range}}: {{cvar}};")
                   :number (if range
                             (>>* "var {{range}}: {{cvar}};")
-                            (>>* "var float: {{cvar}};"))
+                            (>>* "var int: {{cvar}};"))
                   :boolean (>>* "var bool: {{cvar}};")
                   cvar))))
        sort))
 
 (tests
  (cvar-table->string-seq {:a [:set #{0 1 2 3 4 5 6 7 8 9 10 11}], :b [:number]})
- := ["var float: b;" "var set of {0,7,1,4,6,3,2,11,9,5,10,8}: a;"]
+ := ["var int: b;" "var set of {0,7,1,4,6,3,2,11,9,5,10,8}: a;"]
 
  (cvar-table->string-seq {:a [:boolean], :b [:number]})
- := ["var bool: a;" "var float: b;"])
+ := ["var bool: a;" "var int: b;"])
 
 (defn apply-binary-operation [op-string left right]
   (>> {:left left :right right :op-string op-string}
@@ -158,12 +159,6 @@
   [[_ & args]]
   (apply apply-binary-operation "->" args))
 
-(comment
-  (constraint-expression->string [:and [:= 2 2] [:> 3 2]])
-
-  (op-expression->string [:and 1 2])
-  )
-
 (defn apply-comparator [[op & args]]
   (cond 
     (= 1 (count args)) true
@@ -183,7 +178,7 @@
 
 (defmethod op-expression->string :>= [ex] (apply-comparator ex))
 
-(defmethod op-expression->string :contains? [ex] (apply apply-binary-operation "in" (rest ex)))
+(defmethod op-expression->string :contains? [ex] (apply apply-binary-operation " in " (->> ex rest reverse)))
 
 (tests
  (op-expression->string [:< 1 2 3]) := "forall([(1<2),(2<3)])")
@@ -213,6 +208,84 @@
  )
 
 (tests
- (clojure.set/difference
+ ;; test all operators have implementations
+ (clojure.set/difference 
   (set (keys ops/all))
   (set (keys (methods op-expression->string)))) := #{})
+
+(defn where->constraints [where]
+  (map (fn [ex] 
+         (>> {:expression (constraint-expression->string ex)}
+             "constraint {{expression}};")) 
+       where))
+
+;;output(["[\"\(a)\" \"\(b)\"]"])
+(defn ->output [cvar-table]
+  (let [var-string (->> (for [cvar (-> cvar-table keys sort)]
+                          (>> {:var-string (cvar->string cvar)}
+                              "\\\"\\({{var-string}})\\\""))
+                        (interpose " ")
+                        (apply str))]
+    (>> {:vars var-string}
+        "output([\"[{{vars}}]\"]);")))
+
+(tests
+ (->output {:a 1 :b 2}) := "output([\"[\\\"\\(a)\\\" \\\"\\(b)\\\"]\"]);")
+
+(defn transpile [{:keys [where] :as _query} cvar-table]
+  (let [var-declarations (cvar-table->string-seq cvar-table)
+        constraints (where->constraints where)
+        output (->output cvar-table)]
+    (apply str (interpose "\n" (conj (concat var-declarations constraints) output)))))
+
+(defmulti detranspile*
+  (fn [cvar-table [cvar out-str]]
+    (get-in cvar-table [cvar 0])))
+
+(defmethod detranspile* :number [_ [_ out-str]]
+  (Integer/parseInt out-str))
+
+(defmethod detranspile* :boolean [_ [_ out-str]]
+  (Boolean/parseBoolean out-str))
+
+(defmethod detranspile* :set [_ [_ out-str]]
+  (if (re-matches #"[0-9]*\.\.[0-9]*" out-str)
+    (let [[lower upper] (->> (string/split out-str #"\.\.")
+                             (map #(Integer/parseInt %)))]
+      (apply sorted-set (range lower (+ 1 upper))))
+    (read-string (str "#" out-str))))
+
+(defn detranspile [& [out-str cvar-table :as args]]
+  (def margs args)
+  (->> (string/split out-str #"\n")
+       first
+       read-string
+       (interleave (-> cvar-table keys sort))
+       (partition 2)
+       (map (partial detranspile* cvar-table))
+       (zipmap (-> cvar-table keys sort))))
+
+(tests
+ (detranspile
+  "[\"0..11\" \"3\"]\n----------\n"
+  {:a [:set #{0 1 2 3 4 5 6 7 8 9 10 11}], :b [:number]}) 
+ := {:a #{0 1 2 3 4 5 6 7 8 9 10 11}, :b 3}
+
+ (detranspile 
+  "[\"{0,2,3,4,5,6,7,8,9,10,11}\" \"3\"]\n----------\n"
+  {:a [:set #{0 2 3 4 5 6 7 8 9 10 11}], :b [:number]}) 
+ := {:a #{0 7 4 6 3 2 11 9 5 10 8}, :b 3}
+ )
+
+(comment
+  
+
+  (spit "test-output"
+        (transpile
+         {:where [[:contains? :a :b]
+                  [:> [:+ :b 6] 8]]}
+         {:a [:set #{0 2 3 4 5 6 7 8 9 10 11}], :b [:number]}))
+
+  (def st )
+
+  )
