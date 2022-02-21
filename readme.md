@@ -1,4 +1,4 @@
-    "my freedom will be so much the greater and more meaningful the more narrowly I limit my field of action and the more I surround myself with obstacles. Whatever diminishes constraint, diminishes strength. The more constraints one imposes, the more one frees one’s self of the chains that shackle the spirit." - Igor Stravinsky
+"my freedom will be so much the greater and more meaningful the more narrowly I limit my field of action and the more I surround myself with obstacles. Whatever diminishes constraint, diminishes strength. The more constraints one imposes, the more one frees one’s self of the chains that shackle the spirit." - Igor Stravinsky
 
 ## Petrushka is a DSL for solving constraint problems in clojure.
 
