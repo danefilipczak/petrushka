@@ -4,9 +4,7 @@
   (:require [hyperfiddle.rcf :refer [tests]]
             [failjure.core :as f]
             [petrushka.utils.cvar :refer [cvar?]]
-            [clojure2minizinc.core :as mz]
-            [petrushka.operations :as ops]
-            [petrushka.transpiler :as transpiler]))
+            [petrushka.operations :as ops]))
 
 (defn force-sequence [v]
   (if (sequential? v) v [v]))
