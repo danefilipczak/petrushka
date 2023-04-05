@@ -109,7 +109,12 @@
   (codomain [_self] #{Bool})
   (domainv [_self] (repeat all-var-types))
   (cvars [self] (unify-argv-vars self))
-  (validate [self] (validate-domains self)))
+  (validate [self]
+    (when (empty? (->> (:argv self)
+                       (map codomain)
+                       (apply clojure.set/intersection)))
+      (throw (ex-info "equality testing requires consistent types" {})))
+    self))
 
 (defrecord TermIntersection [argv]
   IExpress
