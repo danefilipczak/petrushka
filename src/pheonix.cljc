@@ -1,14 +1,45 @@
 (ns pheonix
-  (:require [hyperfiddle.rcf :refer [tests]]))
+  (:require [clojure.java.shell :as shell]
+            [clojure.spec.alpha :as spec]
+            [clojure.string :as string]
+            [hyperfiddle.rcf :refer [tests]]
+            [petrushka.utils.string :refer [>>]]))
+
+(defn cljs-env?
+  "Take the &env from a macro, and tell whether we are expanding into cljs."
+  [env]
+  (boolean (:ns env)))
+
+(defmacro try-catchall
+  "A cross-platform variant of try-catch that catches all exceptions.
+   Does not support finally, and does not need an exception class."
+  [& body]
+  (let [try-body (butlast body)
+        [catch sym & catch-body :as catch-form] (last body)]
+    (assert (= catch 'catch))
+    (assert (symbol? sym))
+    (if (cljs-env? &env)
+      `(try ~@try-body (~'catch js/Object ~sym ~@catch-body))
+      `(try ~@try-body (~'catch Throwable ~sym ~@catch-body)))))
+
+(defmacro throws? [body]
+  `(try-catchall
+    ~body
+    false
+    (catch e# true)))
 
 (def Numeric ::numeric)
 (def Set ::set)
 (def Bool ::boolean)
+#_(def Sequential ::sequential)
+#_(def Null ::null)
 
 (def all-var-types 
   #{Numeric 
     Set
-    Bool})
+    Bool
+    #_Sequential
+    #_Null})
 
 (defprotocol IExpress
   (write [self]) 
@@ -18,127 +49,259 @@
   (translate [self])
   (validate [self]))
 
-(defn intersection [s1 s2]
-  (if-let [intersection (not-empty (clojure.set/intersection s1 s2))]
+(defn type-error [expression v1 v2]
+  (let [[type1 exp1] (first v1)
+        [type2 exp2] (first v2)
+        jared (fn [e type]
+                (str
+                 (if (= e expression)
+                   "is of type "
+                   "is used as ")
+                 type
+                 (when-not (= e expression)
+                   (str " in expression " (write e)))))]
+    (throw (ex-info
+            (str "inconsistent model: expression "
+                 (write expression)
+                 " "
+                 (jared exp1 type1)
+                 " but "
+                 (jared exp2 type2))
+            {}))))
+
+(defn map-intersection [m1 m2]
+  (select-keys m2 (keys m1)))
+
+(defn intersect-domains
+  "given an expression and two domains,
+   return the intersection of those domains 
+   or throw if their intersection is empty."
+  [expression domain1 domain2]
+  {:pre [(and (spec/valid? ::domain domain1)
+              (spec/valid? ::domain domain2))]}
+  (if-let [intersection (not-empty (map-intersection domain1 domain2))]
     intersection
-    (throw (ex-info "types could not be unified" {}))))
+    (type-error expression domain1 domain2)))
+
+(tests
+ (intersect-domains 2 {Bool 2} {Bool 2}) := {Bool 2}
+ (intersect-domains 2 {Bool 2} {Bool 2 Numeric 2}) := {Bool 2}
+ (intersect-domains 2 {Bool 2} {Bool 3}) := {Bool 3} ;; right to left precidence for conflicting keys
+ (throws? (intersect-domains 2 {Bool 2} {Numeric 2})) := true
+ )
+
+(defn merge-with-key
+  "Returns a map that consists of the rest of the maps conj-ed onto
+  the first.  If a key occurs in more than one map, the mapping(s)
+  from the latter (left-to-right) will be combined with the mapping in
+  the result by calling (f key val-in-result val-in-latter)."
+  [f & maps]
+  (when (some identity maps)
+    (let [merge-entry (fn [m e]
+			(let [k (key e) v (val e)]
+			  (if (contains? m k)
+			    (assoc m k (f k (get m k) v))
+			    (assoc m k v))))
+          merge2 (fn [m1 m2]
+		   (reduce merge-entry (or m1 {}) (seq m2)))]
+      (reduce merge2 maps))))
 
 (extend-protocol IExpress
   clojure.lang.IPersistentSet
   (write [self] (set (map write self)))
-  (codomain [_self] #{Set})
+  (codomain [self] {Set self})
   (cvars [self] (->> self
                      (map cvars)
-                     (apply merge-with intersection)))
-  (validate [self] (doall (map validate self)) self))
+                     (apply merge-with-key intersect-domains)))
+  (validate [self] (doall (map validate self)) self)
+  (translate  [self] (>> {:elements 
+                         (apply str (interpose "," (map translate self)))} 
+                        "{{{elements}}}")))
 
 (defrecord CVar [id]
   IExpress
   (write [self] (list 'fresh (:id self)))
-  (codomain [_self] all-var-types)
-  (cvars [self] {self all-var-types})
-  (validate [self] self))
+  (codomain [self] (zipmap all-var-types (repeat self)))
+  (cvars [self] {self (zipmap all-var-types (repeat self))})
+  (validate [self] self)
+  (translate [self] (str (:id self))))
 
 (defn fresh
   ([]
    (fresh (str (gensym))))
   ([id]
-   (->CVar id)))
+   {:pre [(string? id)]}
+   (if (re-matches #"[A-Za-z][A-Za-z0-9_]*" id)
+     (->CVar id)
+     (throw (ex-info
+             (>> {:id id}
+                 "Invalid identifier: {{id}}. Identifiers should start with a letter and consist only of letters, numbers, and underscores.")
+             {})))))
+
+(spec/def ::domain (spec/map-of all-var-types #(boolean (write %))))
+(spec/def ::domainv (spec/coll-of ::domain))
+(spec/def ::cvars (spec/nilable (spec/map-of #(instance? CVar %) ::domain)))
 
 (extend-protocol IExpress
   Number
   (write [self] self)
-  (codomain [_self] #{Numeric})
+  (codomain [self] {Numeric self})
   (cvars [_self] nil)
-  (validate [self] self))
+  (validate [self] self)
+  (translate [self] (str self)))
 
 (extend-protocol IExpress
   Boolean
   (write [self] self)
-  (codomain [_self] #{Bool})
+  (codomain [self] {Bool self})
   (cvars [_self] nil)
-  (validate [self] self))
+  (validate [self] self)
+  (translate [self] (str self)))
 
 (extend-protocol IExpress
- Object
+  ;; todo is it really helpful to extend this onto object? what would happen if we did not?
+  Object
   (write [self] self)
   (codomain [self] (throw (ex-info "unsupported type" {:self self})))
+  (cvars [_self] nil)
+  (validate [self] self)
+  (translate [self] (throw (ex-info "unsupported type" {:self self}))))
+
+#_(extend-protocol IExpress
+ nil
+  (write [self] self)
+  (codomain [self] {Null self})
   (cvars [_self] nil)
   (validate [self] self))
 
 (defn unify-argv-vars [expression]
+  {:post [(spec/valid? ::cvars %)]}
   (->> (:argv expression)
        ;; this line is only relevant if the arg is a cvar. otherwise we're constantly restricting the cvar to the domains of its call sites.
        (map (fn [domain arg]
               (if (instance? CVar arg)
-                (merge-with
-                 intersection
+                (merge-with-key
+                 intersect-domains
                  (cvars arg)
-                 (zipmap (keys (cvars arg)) (repeat domain)))
+                 {arg domain})
                 (cvars arg)))
             (domainv expression))
-       (apply merge-with intersection)))
+       (apply merge-with-key intersect-domains)))
+
+(comment
+  (count (repeat 1))
+  (def b (fresh))
+  (cvars b)
+  )
 
 (defn validate-domains [expression]
   (doall
    (->> (:argv expression)
-        (map (comp codomain validate))
-        (map intersection (domainv expression))))
+        (map validate)
+        (map (fn [domain arg]
+               (intersect-domains arg (codomain arg) domain)) 
+             (domainv expression))))
   (cvars expression)
   expression)
+
+(defn translate-binary-operation [op-string left right]
+  (>> {:left left :right right :op-string op-string}
+      "({{left}}{{op-string}}{{right}})"))
+
+(defn translate-nary-operation [op-string args]
+  (reduce (partial translate-binary-operation op-string) args))
+
+(comment
+  (translate-nary-operation "and" [1 2])
+  )
 
 (defrecord TermPlus [argv]
   IExpress
   (write [_self] (apply list '+ (map write argv)))
-  (codomain [_self] #{Numeric})
-  (domainv [_self] (repeat #{Numeric}))
+  (codomain [self] {Numeric self})
+  (domainv [self] (repeat {Numeric self}))
   (cvars [self] (unify-argv-vars self))
-  (validate [self] (validate-domains self)))
-
-(defrecord TermGreaterThanOrEqualTo [argv]
-  IExpress
-  (write [_self] (apply list '>= (map write argv)))
-  (codomain [_self] #{Bool})
-  (domainv [_self] (repeat #{Numeric}))
-  (cvars [self] (unify-argv-vars self))
-  (validate [self] (validate-domains self)))
-
-(defrecord TermEquals [argv]
-  IExpress
-  (write [_self] (apply list '= (map write argv)))
-  (codomain [_self] #{Bool})
-  (domainv [_self] (repeat all-var-types))
-  (cvars [self] (unify-argv-vars self))
-  (validate [self]
-    (when (empty? (->> (:argv self)
-                       (map codomain)
-                       (apply clojure.set/intersection)))
-      (throw (ex-info "equality testing requires consistent types" {})))
-    self))
-
-(defrecord TermIntersection [argv]
-  IExpress
-  (write [_self] (apply list 'clojure.set/intersection (map write argv)))
-  (codomain [_self] #{Set})
-  (domainv [_self] (repeat #{Set}))
-  (cvars [self] (unify-argv-vars self))
-  (validate [self] (validate-domains self)))
-
-(defrecord TermContains [argv]
-  IExpress
-  (write [_self] (apply list 'contains? (map write argv)))
-  (codomain [_self] #{Bool})
-  (domainv [_self] [#{Set} #{Numeric}])
-  (cvars [self] (unify-argv-vars self))
-  (validate [self] (validate-domains self)))
+  (validate [self] (validate-domains self))
+  (translate [self] (translate-nary-operation "+" (map translate (:argv self)))))
 
 (defrecord TermAnd [argv]
   IExpress
   (write [_self] (apply list 'and (map write argv)))
-  (codomain [_self] #{Bool})
-  (domainv [_self] (repeat #{Bool}))
+  (codomain [self] {Bool self})
+  (domainv [self] (repeat {Bool self}))
   (cvars [self] (unify-argv-vars self))
-  (validate [self] (validate-domains self)))
+  (validate [self] (validate-domains self))
+  (translate [self] (translate-nary-operation "/\\" (map translate (:argv self)))))
+
+(defn conjunction 
+  ([& args]
+   (if (> (count args) 1)
+     (validate (->TermAnd args))
+     (first args))))
+
+(defn translate-comparator [self op constructor]
+  (case (count (:argv self))
+    1 (translate true)
+    2 (apply translate-binary-operation op (map translate (:argv self)))
+    (->> (:argv self)
+         (partition 2 1)
+         (map constructor)
+         (apply conjunction)
+         translate)))
+
+(defrecord TermGreaterThanOrEqualTo [argv]
+  IExpress
+  (write [_self] (apply list '>= (map write argv)))
+  (codomain [self] {Bool self})
+  (domainv [self] (repeat {Numeric self}))
+  (cvars [self] (unify-argv-vars self))
+  (validate [self] (validate-domains self))
+  (translate [self] (translate-comparator self ">=" ->TermGreaterThanOrEqualTo)))
+
+(comment
+  
+  (translate (expression (>= 1 (fresh) 3)))
+  (partition 2 1 [1 2 3 4])
+  )
+
+(defrecord TermEquals [argv]
+  IExpress
+  (write [_self] (apply list '= (map write argv)))
+  (codomain [self] {Bool self})
+  (domainv [self] (repeat (zipmap all-var-types (repeat self))))
+  (cvars [self] (unify-argv-vars self))
+  (validate [self]
+    (when (empty? (->> (:argv self)
+                       (map (comp set keys codomain))
+                       (apply clojure.set/intersection)))
+      (throw (ex-info "equality testing requires consistent types" {})))
+    self)
+  (translate [self] (translate-comparator self "=" ->TermEquals)))
+
+(defrecord TermIntersection [argv]
+  IExpress
+  (write [_self] (apply list 'clojure.set/intersection (map write argv)))
+  (codomain [self] {Set self})
+  (domainv [self] (repeat {Set self}))
+  (cvars [self] (unify-argv-vars self))
+  (validate [self] (validate-domains self))
+  (translate [self] (translate-nary-operation " intersect " (map translate (:argv self)))))
+
+(defrecord TermContains [argv]
+  IExpress
+  (write [_self] (apply list 'contains? (map write argv)))
+  (codomain [self] {Bool self})
+  (domainv [self] [{Set self} {Numeric self}])
+  (cvars [self] (unify-argv-vars self))
+  (validate [self] (validate-domains self))
+  (translate [self] (translate-binary-operation
+                     " in "
+                     (translate (second (:argv self)))
+                     (translate (first (:argv self))))))
+
+(comment
+  (translate (expression (contains? (fresh) (fresh))))
+  )
 
 (defmulti rewrite* identity)
 
@@ -169,7 +332,15 @@
        (validate (->TermAnd args#))
        (and ~@args))))
 
+(comment 
+  
+  (expression (conjunction 
+               (= 6 (fresh))
+               (= (+ 3 (fresh)) (+ 1 2))))
+  )
+
 (defmacro expression [form]
+  ;; todo:: can you rewrite this in a way that doesnt use var-get?
   (clojure.walk/postwalk
    (fn [f]
      (let [macros {'and 'and*
@@ -183,13 +354,157 @@
          f#)))
    form))
 
+(defn fetch [mzn]
+  (let [temp-file (doto (java.io.File/createTempFile "petrushka" ".mzn") .deleteOnExit)
+        _ (spit temp-file mzn)
+        {:keys [exit out err]} (shell/sh "minizinc" (.getAbsolutePath temp-file))]
+    (if (not= exit 0)
+      (throw (ex-info err {}))
+      (when (not= out "=====UNSATISFIABLE=====\n") ;; todo - grep for this anywhere in the out string. it might be at the end, or be followed by other text
+        out))))
+
+(defn ->output [cvars]
+  (let [var-string (->> (for [cvar (-> cvars keys sort)]
+                          (>> {:x (translate cvar)}
+                              "\\\"\\({{x}})\\\""))
+                        (interpose " ")
+                        (apply str))]
+    (>> {:x var-string}
+        "output([\"[{{x}}]\"]);")))
+
+(defn domain->type [domain]
+  {:pre [(spec/valid? ::domain domain)]}
+  (first (sort (keys domain))))
+
+(defn cvars->var-declarations [cvars]
+  (->> cvars
+       (map (fn [[cvar domain]]
+              (let [type (domain->type domain)
+                    env {:range "0..11"
+                         :cvar (translate cvar)}
+                    >>* (partial >> env)]
+                (cond
+                  (= type Set) (>>* "var set of {{range}}: {{cvar}};")
+                  (= type Numeric) (>>* "var int: {{cvar}};")
+                  (= type Bool) (>>* "var bool: {{cvar}};")))))
+       sort))
+
+(defmulti detranspile*
+  (fn [cvars [cvar _out-str]]
+    (domain->type (get cvars cvar))))
+
+(defmethod detranspile* Numeric [_ [_ out-str]]
+  (Integer/parseInt out-str))
+
+(defmethod detranspile* Bool [_ [_ out-str]]
+  (Boolean/parseBoolean out-str))
+
+(defmethod detranspile* Set [_ [_ out-str]]
+  (if (re-matches #"[0-9]*\.\.[0-9]*" out-str)
+    (let [[lower upper] (->> (string/split out-str #"\.\.")
+                             (map #(Integer/parseInt %)))]
+      (apply sorted-set (range lower (+ 1 upper))))
+    (read-string (str "#" out-str))))
+
+(defn detranspile [& [out-str cvars :as args]]
+  (def margs args)
+  (->> (string/split out-str #"\n")
+       first
+       read-string
+       (interleave (-> cvars keys sort))
+       (partition 2)
+       (map (partial detranspile* cvars))
+       (zipmap (-> cvars keys sort))))
+
+(defn solve [expression]
+  (let [constraint (>> {:e (translate expression)}
+                       "constraint {{e}};")
+        var-declarations (cvars->var-declarations (cvars expression))
+        output (->output (cvars expression))
+        mzn (apply str (interpose "\n" (conj var-declarations constraint output)))
+        _ (def mzn mzn)
+        response (fetch mzn)
+        result (detranspile response (cvars expression))]
+    result))
+
 (defmacro satisfy
   ([term]
    `(satisfy {} ~term))
   ([_opts & terms]
-   `(expression (and* ~@terms))))
+   `(solve (expression (and* ~@terms)))))
+
+(comment
+
+  (defn cluster-free []
+    (expression (+)))
+  
+  (def a (fresh))
+  (def b (fresh))
+  (satisfy (= #{1 2 3} (clojure.set/intersection a #{1 2 3})))
+  
+  (let [a (fresh)] 
+    (get (solve
+          (expression (= (+ 2 a) 6)))
+         a))
+
+  (forall [x (fresh)]
+          (not= (contains? a)))
+  
+  (exists [item set]
+          (not= fffff fff))
+
+
+  (forall [x (fresh)])
+
+  (expression (let [a (fresh)
+                    b (expression (+ a 2))]
+                (expression (* b 3))))
+
+  (expression
+   (let [a (fresh)
+         b (expression (+ a 2))]
+     (expression (+ b 3))))
+  
+  (def bind)
+
+  (clojure.set/intersection)
+
+  (sum [item set]
+       (+ 1 2 3))
+
+
+  (for [a b
+        :where [(a > 3)]]
+    (not=
+     (contains? b (+ a 1))
+     (contains? b (+ a 2))))
+
+  (map cluster-free? (domain (fresh) (range 0 12)))
+
+  (solve (expression (= 10 (apply + [1 2 3 4 5 (fresh)]))))
+  (solve (expression
+          (= (clojure.set/intersection (fresh) #{1 2 3 4 5 6 7 8})
+             #{1 2 3 4 5 6})))
+
+  2
+  )
 
 (declare satisfy-all-blocking)
 (declare satisfy-all-async)
 (declare satisfy-async)
 (declare satisfy-blocking)
+
+
+(comment
+  
+
+  flatten
+  )
+
+#_(extend-protocol IExpress
+ clojure.lang.Sequential
+  (write [self] (apply list 'list (map write self)))
+  (codomain [self] {Sequential self})
+  (cvars [self] (->> (map cvars self)
+                     (apply merge-with-key intersect-domains)))
+  (validate [self] (map validate self)))
