@@ -46,7 +46,7 @@
   (write [self]) 
   (domainv [self])
   (codomain [self]) 
-  (cvars [self]) 
+  (decisions [self]) 
   (translate [self])
   (validate [self])
   (bindings [self]))
@@ -100,10 +100,10 @@
   {:pre [(s/valid? (spec/nilable ::binding) x)]}
   (second x))
 
-(defn binding-error! [cvar binding1 binding2]
+(defn binding-error! [decision binding1 binding2]
   (throw (ex-info
             (str "inconsistent model:  "
-                 (write cvar)
+                 (write decision)
                  " is bound to non-intersecting sets "
                  (write (binding-set binding1))
                  " via "
@@ -114,11 +114,11 @@
                  (write (binding-source binding2)))
             {})))
 
-(defrecord CVar [id]
+(defrecord Decision [id]
   IExpress
   (write [self] (list 'fresh (:id self)))
   (codomain [self] (zipmap all-var-types (repeat self)))
-  (cvars [self] {self (zipmap all-var-types (repeat self))})
+  (decisions [self] {self (zipmap all-var-types (repeat self))})
   (bindings [self] nil)
   (validate [self] self)
   (translate [self] (str (:id self))))
@@ -129,41 +129,41 @@
   ([id]
    {:pre [(string? id)]}
    (if (re-matches #"[A-Za-z][A-Za-z0-9_]*" id)
-     (->CVar id)
+     (->Decision id)
      (throw (ex-info
              (>> {:id id}
                  "Invalid identifier: {{id}}. Identifiers should start with a letter and consist only of letters, numbers, and underscores.")
              {})))))
 
-(defrecord Binding [set cvar]
+(defrecord Binding [set decision]
   IExpress
-  (write [self] (list 'bind set (write cvar)))
-  (codomain [self] (codomain cvar))
-  (cvars [self] (cvars cvar))
-  (validate [_self] (validate cvar))
-  (translate [_self] (translate cvar))
-  (bindings [self] {cvar [set self]}))
+  (write [self] (list 'bind set (write decision)))
+  (codomain [self] (codomain decision))
+  (decisions [self] (decisions decision))
+  (validate [_self] (validate decision))
+  (translate [_self] (translate decision))
+  (bindings [self] {decision [set self]}))
 
-(def cvar? (partial instance? CVar))
+(def decision? (partial instance? Decision))
 (def binding? (partial instance? Binding))
-(def decidable? (some-fn cvar? binding?))
+(def decidable? (some-fn decision? binding?))
 
-(defn decidable->cvar [x]
+(defn decidable->decision [x]
   {:pre [(decidable? x)]
-   :post [(cvar? %)]}
+   :post [(decision? %)]}
   (if (binding? x)
-    (:cvar x)
+    (:decision x)
     x))
 
-(defn bind [set cvar]
-  {:pre [(cvar? cvar)]}
-  (->Binding (apply sorted-set set) cvar))
+(defn bind [set decision]
+  {:pre [(decision? decision)]}
+  (->Binding (apply sorted-set set) decision))
 
 (defn intersect-bindings
-  "given a cvar and two bindings,
+  "given a decision and two bindings,
    return the intersection of those bindings 
    or throw if their intersection is empty."
-  [expression cvar binding1 binding2]
+  [expression decision binding1 binding2]
   {:pre [(and (spec/valid? ::binding binding1)
               (spec/valid? ::binding binding2))]
    :post [(spec/valid? ::binding %)]}
@@ -172,7 +172,7 @@
                           (first binding1) 
                           (first binding2)))]
     [intersection expression]
-    (binding-error! cvar binding1 binding2)))
+    (binding-error! decision binding1 binding2)))
 
 (tests
  (let [a (fresh)]
@@ -220,8 +220,8 @@
   clojure.lang.IPersistentSet
   (write [self] (set (map write self)))
   (codomain [self] {Set self})
-  (cvars [self] (->> self
-                     (map cvars)
+  (decisions [self] (->> self
+                     (map decisions)
                      (apply merge-with-key intersect-domains)))
   (bindings [self] (->> self
                      (map bindings)
@@ -233,15 +233,15 @@
 
 (spec/def ::domain (spec/map-of all-var-types #(boolean (write %))))
 (spec/def ::domainv (spec/coll-of ::domain))
-(spec/def ::cvars (spec/nilable (spec/map-of cvar? ::domain)))
+(spec/def ::decisions (spec/nilable (spec/map-of decision? ::domain)))
 (spec/def ::binding (spec/tuple (every-pred set? sorted?) #(boolean (write %))))
-(spec/def ::bindings (spec/nilable (spec/map-of cvar? ::binding)))
+(spec/def ::bindings (spec/nilable (spec/map-of decision? ::binding)))
 
 (extend-protocol IExpress
   Number
   (write [self] self)
   (codomain [self] {Numeric self})
-  (cvars [_self] nil)
+  (decisions [_self] nil)
   (bindings [_self] nil)
   (validate [self] self)
   (translate [self] (str self)))
@@ -250,7 +250,7 @@
   Boolean
   (write [self] self)
   (codomain [self] {Bool self})
-  (cvars [_self] nil)
+  (decisions [_self] nil)
   (bindings [_self] nil)
   (validate [self] self)
   (translate [self] (str self)))
@@ -260,7 +260,7 @@
   Object
   (write [self] self)
   (codomain [self] (throw (ex-info "unsupported type" {:self self})))
-  (cvars [_self] nil)
+  (decisions [_self] nil)
   (bindings [_self] nil)
   (validate [self] self)
   (translate [self] (throw (ex-info "unsupported type" {:self self})))
@@ -270,20 +270,20 @@
  nil
   (write [self] self)
   (codomain [self] {Null self})
-  (cvars [_self] nil)
+  (decisions [_self] nil)
   (validate [self] self))
 
 (defn unify-argv-vars [expression]
-  {:post [(spec/valid? ::cvars %)]}
+  {:post [(spec/valid? ::decisions %)]}
   (->> (:argv expression)
-       ;; this line is only relevant if the arg is a cvar. otherwise we're constantly restricting the cvar to the domains of its call sites.
+       ;; this line is only relevant if the arg is a decision. otherwise we're constantly restricting the decision to the domains of its call sites.
        (map (fn [domain arg]
               (if (decidable? arg)
                 (merge-with-key
                  intersect-domains
-                 (cvars arg)
-                 {(decidable->cvar arg) domain})
-                (cvars arg)))
+                 (decisions arg)
+                 {(decidable->decision arg) domain})
+                (decisions arg)))
             (domainv expression))
        (apply merge-with-key intersect-domains)))
 
@@ -294,7 +294,7 @@
         (map (fn [domain arg]
                (intersect-domains arg (codomain arg) domain)) 
              (domainv expression))))
-  (cvars expression)
+  (decisions expression)
   expression)
 
 (defn translate-binary-operation [op-string left right]
@@ -318,7 +318,7 @@
   (write [_self] (apply list '+ (map write argv)))
   (codomain [self] {Numeric self})
   (domainv [self] (repeat {Numeric self}))
-  (cvars [self] (unify-argv-vars self))
+  (decisions [self] (unify-argv-vars self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-nary-operation "+" (map translate (:argv self)))))
@@ -328,7 +328,7 @@
   (write [_self] (apply list 'and (map write argv)))
   (codomain [self] {Bool self})
   (domainv [self] (repeat {Bool self}))
-  (cvars [self] (unify-argv-vars self))
+  (decisions [self] (unify-argv-vars self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-nary-operation "/\\" (map translate (:argv self)))))
@@ -354,7 +354,7 @@
   (write [_self] (apply list '>= (map write argv)))
   (codomain [self] {Bool self})
   (domainv [self] (repeat {Numeric self}))
-  (cvars [self] (unify-argv-vars self))
+  (decisions [self] (unify-argv-vars self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-comparator self ">=" ->TermGreaterThanOrEqualTo)))
@@ -370,7 +370,7 @@
   (write [_self] (apply list '= (map write argv)))
   (codomain [self] {Bool self})
   (domainv [self] (repeat (zipmap all-var-types (repeat self))))
-  (cvars [self] (unify-argv-vars self))
+  (decisions [self] (unify-argv-vars self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self]
     (when (empty? (->> (:argv self)
@@ -385,7 +385,7 @@
   (write [_self] (apply list 'clojure.set/intersection (map write argv)))
   (codomain [self] {Set self})
   (domainv [self] (repeat {Set self}))
-  (cvars [self] (unify-argv-vars self))
+  (decisions [self] (unify-argv-vars self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-nary-operation " intersect " (map translate (:argv self)))))
@@ -395,7 +395,7 @@
   (write [_self] (apply list 'contains? (map write argv)))
   (codomain [self] {Bool self})
   (domainv [self] [{Set self} {Numeric self}])
-  (cvars [self] (unify-argv-vars self))
+  (decisions [self] (unify-argv-vars self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-binary-operation
@@ -426,13 +426,13 @@
     (if (= form-fn ast-constructor-fn)
       form-fn
       (fn [& args]
-        (if (some cvars args)
+        (if (some decisions args)
           (validate (ast-constructor-fn args))
           (apply form-fn args))))))
 
 (defmacro and* [& args]
   `(let [args# (list ~@args)]
-     (if (some cvars args#)
+     (if (some decisions args#)
        (validate (->TermAnd args#))
        (and ~@args))))
 
@@ -458,21 +458,24 @@
          f#)))
    form))
 
-(defmacro ?> [form]
+(defmacro ?> 
+  "The dither operator.
+   dith·er - noun: to be indecisive."
+  [form]
   `(expression ~form))
 
 (defn fetch [mzn]
   (let [temp-file (doto (java.io.File/createTempFile "petrushka" ".mzn") .deleteOnExit)
         _ (spit temp-file mzn)
-        {:keys [exit out err]} (shell/sh "minizinc" (.getAbsolutePath temp-file))]
+        {:keys [exit out err]} (shell/sh "minizinc" (.getAbsolutePath temp-file) "-a")]
     (if (not= exit 0)
       (throw (ex-info err {}))
       (when (not= out "=====UNSATISFIABLE=====\n") ;; todo - grep for this anywhere in the out string. it might be at the end, or be followed by other text
         out))))
 
-(defn ->output [cvars]
-  (let [var-string (->> (for [cvar (-> cvars keys sort)]
-                          (>> {:x (translate cvar)}
+(defn ->output [decisions]
+  (let [var-string (->> (for [decision (-> decisions keys sort)]
+                          (>> {:x (translate decision)}
                               "\\\"\\({{x}})\\\""))
                         (interpose " ")
                         (apply str))]
@@ -483,25 +486,25 @@
   {:pre [(spec/valid? ::domain domain)]}
   (first (sort (keys domain))))
 
-(defn cvars->var-declarations [cvars bindings]
-  (->> cvars
-       (map (fn [[cvar domain]]
-              (let [set (binding-set (get bindings cvar))
+(defn decisions->var-declarations [decisions bindings]
+  (->> decisions
+       (map (fn [[decision domain]]
+              (let [set (binding-set (get bindings decision))
                     type (domain->type domain)
                     _ (when (and (= type Set) (nil? set))
-                        (throw (ex-info (str "unbound set cvar: " (write cvar)) {})))
-                    env {:range (translate set)
-                         :cvar (translate cvar)}
+                        (throw (ex-info (str "unbound set decision: " (write decision)) {})))
+                    env {:range (some-> set translate)
+                         :decision (translate decision)}
                     >>* (partial >> env)]
                 (cond
-                  (= type Set) (>>* "var set of {{range}}: {{cvar}};")
-                  (= type Numeric) (>>* "var int: {{cvar}};")
-                  (= type Bool) (>>* "var bool: {{cvar}};")))))
+                  (= type Set) (>>* "var set of {{range}}: {{decision}};")
+                  (= type Numeric) (>>* "var int: {{decision}};")
+                  (= type Bool) (>>* "var bool: {{decision}};")))))
        sort))
 
 (defmulti detranspile*
-  (fn [cvars [cvar _out-str]]
-    (domain->type (get cvars cvar))))
+  (fn [decisions [decision _out-str]]
+    (domain->type (get decisions decision))))
 
 (defmethod detranspile* Numeric [_ [_ out-str]]
   (Integer/parseInt out-str))
@@ -516,38 +519,38 @@
       (apply sorted-set (range lower (+ 1 upper))))
     (read-string (str "#" out-str))))
 
-(defn detranspile [& [out-str cvars :as args]]
+(defn detranspile [& [out-str decisions :as args]]
   (def margs args)
   (->> (string/split out-str #"\n")
        first
        read-string
-       (interleave (-> cvars keys sort))
+       (interleave (-> decisions keys sort))
        (partition 2)
-       (map (partial detranspile* cvars))
-       (zipmap (-> cvars keys sort))))
+       (map (partial detranspile* decisions))
+       (zipmap (-> decisions keys sort))))
 
-(defn solve [expression]
+(defn solve [opts expression]
   (let [constraint (>> {:e (translate expression)}
                        "constraint {{e}};")
-        var-declarations (cvars->var-declarations 
-                          (cvars expression)
+        var-declarations (decisions->var-declarations 
+                          (decisions expression)
                           (bindings expression))
-        output (->output (cvars expression))
+        output (->output (decisions expression))
         mzn (apply str (interpose "\n" (conj var-declarations constraint output)))
         _ (def mzn mzn)
         response (fetch mzn)
-        result (detranspile response (cvars expression))]
+        result (when response (detranspile response (decisions expression)))]
     result))
 
 (defmacro satisfy
   ([term]
    `(satisfy {} ~term))
-  ([_opts & terms]
-   `(solve (expression (and* ~@terms)))))
+  ([opts term]
+   `(solve ~opts (expression ~term))))
 
 (comment
   
-  (satisfy (contains? (fresh) 26))
+  (satisfy {} (contains? (into #{} (range 2 10)) (fresh)))
   ; *, +, !, -, _, '?, <, > and =
 
 
@@ -565,7 +568,7 @@
   (defn cluster-free []
     (expression (+)))
 
-  (def a (fresh))
+  (def a (bind (range 10) (fresh)))
   (def b (fresh))
   (satisfy (= #{1 2 3} (clojure.set/intersection a #{1 2 3})))
 
@@ -617,8 +620,6 @@
 
   2
   )
-
-(declare satisfy)
 (declare satisfy-all)
 (declare maximize)
 (declare maximize-all)
@@ -628,6 +629,6 @@
  clojure.lang.Sequential
   (write [self] (apply list 'list (map write self)))
   (codomain [self] {Sequential self})
-  (cvars [self] (->> (map cvars self)
+  (decisions [self] (->> (map decisions self)
                      (apply merge-with-key intersect-domains)))
   (validate [self] (map validate self)))
