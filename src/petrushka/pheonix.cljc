@@ -1,4 +1,4 @@
-(ns pheonix
+(ns petrushka.pheonix
   (:require [clojure.java.shell :as shell]
             [clojure.spec.alpha :as spec]
             [clojure.string :as string]
