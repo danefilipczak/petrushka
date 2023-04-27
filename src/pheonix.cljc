@@ -124,6 +124,7 @@
   (translate [self] (str (:id self))))
 
 (defn fresh
+  "Mint a fresh decision."
   ([]
    (fresh (str (gensym))))
   ([id]
@@ -461,6 +462,7 @@
 (defmacro ?> 
   "The dither operator.
    dith·er - noun: to be indecisive."
+  ;;todo this should return a dithered in order to provide a single interface
   [form]
   `(expression ~form))
 
