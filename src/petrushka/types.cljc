@@ -6,7 +6,7 @@
 #_(def Sequential ::sequential)
 #_(def Null ::null)
 
-(def all-var-types 
+(def all-decision-types 
   #{Numeric 
     Set
     Bool

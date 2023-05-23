@@ -6,18 +6,11 @@
             [petrushka.utils.string :refer [>>]]
             [petrushka.adapter :as adapter]
             [petrushka.types :as types]
+            [petrushka.protocols :as protocols]
             [petrushka.utils.test :as utils.test]
             [clojure.spec.alpha :as s]))
 
 (def ^:dynamic *debug* false)
-(defprotocol IExpress
-  (write [self]) 
-  (domainv [self])
-  (codomain [self]) 
-  (decisions [self]) 
-  (translate [self])
-  (validate [self])
-  (bindings [self]))
 
 (defn type-error! [expression v1 v2]
   (let [[type1 exp1] (first v1)
@@ -29,10 +22,10 @@
                    "is used as ")
                  type
                  (when-not (= e expression)
-                   (str " in expression " (write e)))))]
+                   (str " in expression " (protocols/write e)))))]
     (throw (ex-info
             (str "inconsistent model: expression "
-                 (write expression)
+                 (protocols/write expression)
                  " "
                  (jared exp1 type1)
                  " but "
@@ -71,22 +64,22 @@
 (defn binding-error! [decision binding1 binding2]
   (throw (ex-info
             (str "inconsistent model:  "
-                 (write decision)
+                 (protocols/write decision)
                  " is bound to non-intersecting sets "
-                 (write (binding-set binding1))
+                 (protocols/write (binding-set binding1))
                  " via "
-                 (write (binding-source binding1))
+                 (protocols/write (binding-source binding1))
                  " and "
-                 (write (binding-set binding2))
+                 (protocols/write (binding-set binding2))
                  " via "
-                 (write (binding-source binding2)))
+                 (protocols/write (binding-source binding2)))
             {})))
 
 (defrecord Decision [id]
-  IExpress
-  (write [self] (list 'fresh (:id self)))
-  (codomain [self] (zipmap types/all-var-types (repeat self)))
-  (decisions [self] {self (zipmap types/all-var-types (repeat self))})
+  protocols/IExpress
+  (protocols/write [self] (list 'fresh (:id self)))
+  (codomain [self] (zipmap types/all-decision-types (repeat self)))
+  (decisions [self] {self (zipmap types/all-decision-types (repeat self))})
   (bindings [self] nil)
   (validate [self] self)
   (translate [self] (str (:id self))))
@@ -105,12 +98,12 @@
              {})))))
 
 (defrecord Binding [set decision]
-  IExpress
-  (write [self] (list 'bind set (write decision)))
-  (codomain [self] (codomain decision))
-  (decisions [self] (decisions decision))
-  (validate [_self] (validate decision))
-  (translate [_self] (translate decision))
+  protocols/IExpress
+  (write [self] (list 'bind set (protocols/write decision)))
+  (codomain [self] (protocols/codomain decision))
+  (decisions [self] (protocols/decisions decision))
+  (validate [_self] (protocols/validate decision))
+  (translate [_self] (protocols/translate decision))
   (bindings [self] {decision [set self]}))
 
 (def decision? (partial instance? Decision))
@@ -148,23 +141,23 @@
    (intersect-bindings
     :exp
     a
-    (get (bindings (bind (range 0 10) a)) a)
-    (get (bindings (bind (range 0 5) a)) a))
+    (get (protocols/bindings (bind (range 0 10) a)) a)
+    (get (protocols/bindings (bind (range 0 5) a)) a))
    := [#{0 1 2 3 4} :exp]
 
    (intersect-bindings
     :exp
     a
-    (get (bindings (bind (range 0 10) a)) a)
-    (get (bindings (bind (range 0 10) a)) a))
+    (get (protocols/bindings (bind (range 0 10) a)) a)
+    (get (protocols/bindings (bind (range 0 10) a)) a))
    := [#{0 1 2 3 4 5 6 7 8 9} :exp]
 
    (utils.test/throws?
     (intersect-bindings
      :exp
      a
-     (get (bindings (bind (range 0 10) a)) a)
-     (get (bindings (bind (range 20 30) a)) a)))
+     (get (protocols/bindings (bind (range 0 10) a)) a)
+     (get (protocols/bindings (bind (range 20 30) a)) a)))
    := true
   
    ))
@@ -185,28 +178,28 @@
 		   (reduce merge-entry (or m1 {}) (seq m2)))]
       (reduce merge2 maps))))
 
-(extend-protocol IExpress
+(extend-protocol protocols/IExpress
   clojure.lang.IPersistentSet
-  (write [self] (set (map write self)))
+  (write [self] (set (map protocols/write self)))
   (codomain [self] {types/Set self})
   (decisions [self] (->> self
-                     (map decisions)
+                     (map protocols/decisions)
                      (apply merge-with-key intersect-domains)))
   (bindings [self] (->> self
-                     (map bindings)
+                     (map protocols/bindings)
                      (apply merge-with-key (partial intersect-bindings self))))
-  (validate [self] (doall (map validate self)) self)
+  (validate [self] (doall (map protocols/validate self)) self)
   (translate  [self] (>> {:elements 
-                         (apply str (interpose "," (map translate self)))} 
+                         (apply str (interpose "," (map protocols/translate self)))} 
                         "{{{elements}}}")))
 
-(spec/def ::domain (spec/map-of types/all-var-types #(boolean (write %))))
+(spec/def ::domain (spec/map-of types/all-decision-types #(boolean (protocols/write %))))
 (spec/def ::domainv (spec/coll-of ::domain))
 (spec/def ::decisions (spec/nilable (spec/map-of decision? ::domain)))
-(spec/def ::binding (spec/tuple (every-pred set? sorted?) #(boolean (write %))))
+(spec/def ::binding (spec/tuple (every-pred set? sorted?) #(boolean (protocols/write %))))
 (spec/def ::bindings (spec/nilable (spec/map-of decision? ::binding)))
 
-(extend-protocol IExpress
+(extend-protocol protocols/IExpress
   Number
   (write [self] self)
   (codomain [self] {types/Numeric self})
@@ -215,7 +208,7 @@
   (validate [self] self)
   (translate [self] (str self)))
 
-(extend-protocol IExpress
+(extend-protocol protocols/IExpress
   Boolean
   (write [self] self)
   (codomain [self] {types/Bool self})
@@ -224,7 +217,7 @@
   (validate [self] self)
   (translate [self] (str self)))
 
-(extend-protocol IExpress
+(extend-protocol protocols/IExpress
   ;; todo is it really helpful to extend this onto object? what would happen if we did not?
   Object
   (write [self] self)
@@ -235,7 +228,7 @@
   (translate [self] (throw (ex-info "unsupported type" {:self self})))
   (bindings [self] nil))
 
-#_(extend-protocol IExpress
+#_(extend-protocol protocols/IExpress
  nil
   (write [self] self)
   (codomain [self] {Null self})
@@ -250,21 +243,21 @@
               (if (decidable? arg)
                 (merge-with-key
                  intersect-domains
-                 (decisions arg)
+                 (protocols/decisions arg)
                  {(decidable->decision arg) domain})
-                (decisions arg)))
-            (domainv expression))
+                (protocols/decisions arg)))
+            (protocols/domainv expression))
        (apply merge-with-key intersect-domains)))
 
 (defn validate-domains [expression]
   (doall
    (->> (:argv expression)
-        (map validate)
+        (map protocols/validate)
         (map
          (fn [domain arg]
-           (intersect-domains arg (codomain arg) domain))
-         (domainv expression))))
-  (decisions expression)
+           (intersect-domains arg (protocols/codomain arg) domain))
+         (protocols/domainv expression))))
+  (protocols/decisions expression)
   expression)
 
 (defn translate-binary-operation [op-string left right]
@@ -280,48 +273,48 @@
 
 (defn unify-argv-bindings [e]
   (->> (:argv e)
-       (map bindings)
+       (map protocols/bindings)
        (apply merge-with-key (partial intersect-bindings e))))
 
 (defrecord TermPlus [argv]
-  IExpress
-  (write [_self] (apply list '+ (map write argv)))
+  protocols/IExpress
+  (write [_self] (apply list '+ (map protocols/write argv)))
   (codomain [self] {types/Numeric self})
   (domainv [self] (repeat {types/Numeric self}))
   (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
-  (translate [self] (translate-nary-operation "+" (map translate (:argv self)))))
+  (translate [self] (translate-nary-operation "+" (map protocols/translate (:argv self)))))
 
 (defrecord TermAnd [argv]
-  IExpress
-  (write [_self] (apply list 'and (map write argv)))
+  protocols/IExpress
+  (write [_self] (apply list 'and (map protocols/write argv)))
   (codomain [self] {types/Bool self})
   (domainv [self] (repeat {types/Bool self}))
   (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
-  (translate [self] (translate-nary-operation "/\\" (map translate (:argv self)))))
+  (translate [self] (translate-nary-operation "/\\" (map protocols/translate (:argv self)))))
 
 (defn conjunction 
   ([& args]
    (if (> (count args) 1)
-     (validate (->TermAnd args))
+     (protocols/validate (->TermAnd args))
      (first args))))
 
 (defn translate-comparator [self op constructor]
   (case (count (:argv self))
-    1 (translate true)
-    2 (apply translate-binary-operation op (map translate (:argv self)))
+    1 (protocols/translate true)
+    2 (apply translate-binary-operation op (map protocols/translate (:argv self)))
     (->> (:argv self)
          (partition 2 1)
          (map constructor)
          (apply conjunction)
-         translate)))
+         protocols/translate)))
 
 (defrecord TermGreaterThanOrEqualTo [argv]
-  IExpress
-  (write [_self] (apply list '>= (map write argv)))
+  protocols/IExpress
+  (write [_self] (apply list '>= (map protocols/write argv)))
   (codomain [self] {types/Bool self})
   (domainv [self] (repeat {types/Numeric self}))
   (decisions [self] (unify-argv-decisions self))
@@ -331,48 +324,48 @@
 
 (comment
   
-  (translate (expression (>= 1 (fresh) 3)))
+  (protocols/translate (expression (>= 1 (fresh) 3)))
   (partition 2 1 [1 2 3 4])
   )
 
 (defrecord TermModulo [argv]
-  IExpress
-  (write [_self] (apply list 'mod (map write argv)))
+  protocols/IExpress
+  (write [_self] (apply list 'mod (map protocols/write argv)))
   (codomain [self] {types/Numeric self})
   (domainv [self] [{types/Numeric self} {types/Numeric self}])
   (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
-  (translate [self] (apply translate-binary-operation "mod" (map translate argv))))
+  (translate [self] (apply translate-binary-operation "mod" (map protocols/translate argv))))
 
 (defrecord TermEquals [argv]
-  IExpress
-  (write [_self] (apply list '= (map write argv)))
+  protocols/IExpress
+  (write [_self] (apply list '= (map protocols/write argv)))
   (codomain [self] {types/Bool self})
-  (domainv [self] (repeat (zipmap types/all-var-types (repeat self))))
+  (domainv [self] (repeat (zipmap types/all-decision-types (repeat self))))
   (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self]
     (when (empty? (->> (:argv self)
-                       (map (comp set keys codomain))
+                       (map (comp set keys protocols/codomain))
                        (apply clojure.set/intersection)))
       (throw (ex-info "equality testing requires consistent types" {})))
     self)
   (translate [self] (translate-comparator self "=" ->TermEquals)))
 
 (defrecord TermIntersection [argv]
-  IExpress
-  (write [_self] (apply list 'clojure.set/intersection (map write argv)))
+  protocols/IExpress
+  (write [_self] (apply list 'clojure.set/intersection (map protocols/write argv)))
   (codomain [self] {types/Set self})
   (domainv [self] (repeat {types/Set self}))
   (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
-  (translate [self] (translate-nary-operation "intersect" (map translate (:argv self)))))
+  (translate [self] (translate-nary-operation "intersect" (map protocols/translate (:argv self)))))
 
 (defrecord TermContains [argv]
-  IExpress
-  (write [_self] (apply list 'contains? (map write argv)))
+  protocols/IExpress
+  (write [_self] (apply list 'contains? (map protocols/write argv)))
   (codomain [self] {types/Bool self})
   (domainv [self] [{types/Set self} {types/Numeric self}])
   (decisions [self] (unify-argv-decisions self))
@@ -380,11 +373,11 @@
   (validate [self] (validate-domains self))
   (translate [self] (translate-binary-operation
                      "in"
-                     (translate (second (:argv self)))
-                     (translate (first (:argv self))))))
+                     (protocols/translate (second (:argv self)))
+                     (protocols/translate (first (:argv self))))))
 
 (comment
-  (translate (expression (contains? (fresh) (fresh))))
+  (protocols/translate (expression (contains? (fresh) (fresh))))
   )
 
 (defmulti rewrite* identity)
@@ -408,14 +401,14 @@
     (if (= form-fn ast-constructor-fn)
       form-fn
       (fn [& args]
-        (if (some decisions args)
-          (validate (ast-constructor-fn args))
+        (if (some protocols/decisions args)
+          (protocols/validate (ast-constructor-fn args))
           (apply form-fn args))))))
 
 (defmacro and* [& args]
   `(let [args# (list ~@args)]
-     (if (some decisions args#)
-       (validate (->TermAnd args#))
+     (if (some protocols/decisions args#)
+       (protocols/validate (->TermAnd args#))
        (and ~@args))))
 
 (comment 
@@ -457,7 +450,7 @@
 
 (defn ->output [decisions]
   (let [var-string (->> (for [decision (-> decisions keys sort)]
-                          (>> {:x (translate decision)}
+                          (>> {:x (protocols/translate decision)}
                               "\\\"\\({{x}})\\\""))
                         (interpose " ")
                         (apply str))]
@@ -474,9 +467,9 @@
               (let [set (binding-set (get bindings decision))
                     type (domain->type domain)
                     _ (when (and (= type types/Set) (nil? set))
-                        (throw (ex-info (str "unbound set decision: " (write decision)) {})))
-                    env {:range (some-> set translate)
-                         :decision (translate decision)}
+                        (throw (ex-info (str "unbound set decision: " (protocols/write decision)) {})))
+                    env {:range (some-> set protocols/translate)
+                         :decision (protocols/translate decision)}
                     >>* (partial >> env)]
                 (cond
                   (= type types/Set) (>>* "var set of {{range}}: {{decision}};")
@@ -511,34 +504,28 @@
        (map (partial detranspile* decisions))
        (zipmap (-> decisions keys sort))))
 
-(comment
-  (defn jared [expression type]
-    (contains? (codomain expression) type))
-  (codomain (?> (+ 1 (fresh))))
-  )
-
 (defn solve [{:keys [all? async?] :as opts}
              constraint
              objective]
   {:pre [(some? constraint)
-         (contains? (codomain constraint) types/Bool)
-         (or (nil? objective) (contains? (codomain objective) types/Numeric))]}
-  (let [constraint-str (>> {:e (translate constraint)}
+         (contains? (protocols/codomain constraint) types/Bool)
+         (or (nil? objective) (contains? (protocols/codomain objective) types/Numeric))]}
+  (let [constraint-str (>> {:e (protocols/translate constraint)}
                            "constraint {{e}};")
         directive-str (if objective
-                        (>> {:e (translate objective)}
+                        (>> {:e (protocols/translate objective)}
                             "solve maximize {{e}};")
                         "solve satisfy;")
         merged-decisions (merge-with-key
                           intersect-domains
-                          (decisions constraint)
-                          (when objective (decisions objective)))
+                          (protocols/decisions constraint)
+                          (when objective (protocols/decisions objective)))
         var-declarations-str (decisions->var-declarations
                               merged-decisions
                               (merge-with-key
                                (partial intersect-bindings nil)
-                               (bindings constraint)
-                               (when objective (bindings objective))))
+                               (protocols/bindings constraint)
+                               (when objective (protocols/bindings objective))))
         output-str (->output merged-decisions)
         mzn (apply str (interpose "\n" (cond-> var-declarations-str
                                          constraint-str (conj constraint-str)
@@ -625,7 +612,7 @@
           := false)))
 
 (defn dithered? [x]
-  (boolean (decisions x)))
+  (boolean (protocols/decisions x)))
 
 (tests
  (dithered? (?> (+ (fresh) 1))) := true
@@ -636,7 +623,7 @@
   (hyperfiddle.rcf/enable!)
   (dithered? (?> (+ 1 (fresh))))
   
-  (decisions #{(fresh)})
+  (protocols/decisions #{(fresh)})
   supers
   clojure.set/superset?
   
@@ -648,7 +635,7 @@
 
 
   (let [a (fresh)]
-    (bindings (?> (+ 3 
+    (protocols/bindings (?> (+ 3 
                      (bind (range 12) a)
                      (bind (range 15) a)))))
   
@@ -715,10 +702,10 @@
   )
 
 
-#_(extend-protocol IExpress
+#_(extend-protocol protocols/IExpress
  clojure.lang.Sequential
-  (write [self] (apply list 'list (map write self)))
+  (write [self] (apply list 'list (map protocols/write self)))
   (codomain [self] {Sequential self})
-  (decisions [self] (->> (map decisions self)
+  (decisions [self] (->> (map protocols/decisions self)
                      (apply merge-with-key intersect-domains)))
-  (validate [self] (map validate self)))
+  (validate [self] (map protocols/validate self)))
