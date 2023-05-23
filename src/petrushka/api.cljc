@@ -1,10 +1,13 @@
-(ns petrushka.pheonix
+(ns petrushka.api
   (:require [clojure.java.shell :as shell]
             [clojure.spec.alpha :as spec]
             [clojure.string :as string]
             [hyperfiddle.rcf :refer [tests]]
             [petrushka.utils.string :refer [>>]]
+            [petrushka.adapter :as adapter]
             [clojure.spec.alpha :as s]))
+
+(def ^:dynamic *debug* false)
 
 (defn cljs-env?
   "Take the &env from a macro, and tell whether we are expanding into cljs."
@@ -292,15 +295,16 @@
   (doall
    (->> (:argv expression)
         (map validate)
-        (map (fn [domain arg]
-               (intersect-domains arg (codomain arg) domain)) 
-             (domainv expression))))
+        (map
+         (fn [domain arg]
+           (intersect-domains arg (codomain arg) domain))
+         (domainv expression))))
   (decisions expression)
   expression)
 
 (defn translate-binary-operation [op-string left right]
   (>> {:left left :right right :op-string op-string}
-      "({{left}}{{op-string}}{{right}})"))
+      "({{left}} {{op-string}} {{right}})"))
 
 (defn translate-nary-operation [op-string args]
   (reduce (partial translate-binary-operation op-string) args))
@@ -366,6 +370,16 @@
   (partition 2 1 [1 2 3 4])
   )
 
+(defrecord TermModulo [argv]
+  IExpress
+  (write [_self] (apply list 'mod (map write argv)))
+  (codomain [self] {Numeric self})
+  (domainv [self] [{Numeric self} {Numeric self}])
+  (decisions [self] (unify-argv-vars self))
+  (bindings [self] (unify-argv-bindings self))
+  (validate [self] (validate-domains self))
+  (translate [self] (apply translate-binary-operation "mod" (map translate argv))))
+
 (defrecord TermEquals [argv]
   IExpress
   (write [_self] (apply list '= (map write argv)))
@@ -389,7 +403,7 @@
   (decisions [self] (unify-argv-vars self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
-  (translate [self] (translate-nary-operation " intersect " (map translate (:argv self)))))
+  (translate [self] (translate-nary-operation "intersect" (map translate (:argv self)))))
 
 (defrecord TermContains [argv]
   IExpress
@@ -400,7 +414,7 @@
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-binary-operation
-                     " in "
+                     "in"
                      (translate (second (:argv self)))
                      (translate (first (:argv self))))))
 
@@ -415,6 +429,8 @@
 (defmethod rewrite* >= [_] ->TermGreaterThanOrEqualTo)
 
 (defmethod rewrite* = [_] ->TermEquals)
+
+(defmethod rewrite* mod [_] ->TermModulo)
 
 (defmethod rewrite* clojure.set/intersection [_] ->TermIntersection)
 
@@ -462,7 +478,6 @@
 (defmacro ?> 
   "The dither operator.
    dith·er - noun: to be indecisive."
-  ;;todo this should return a dithered in order to provide a single interface
   [form]
   `(expression ~form))
 
@@ -521,7 +536,7 @@
       (apply sorted-set (range lower (+ 1 upper))))
     (read-string (str "#" out-str))))
 
-(defn detranspile [& [out-str decisions :as args]]
+(defn detranspile [& [decisions out-str :as args]]
   (def margs args)
   (->> (string/split out-str #"\n")
        first
@@ -531,28 +546,139 @@
        (map (partial detranspile* decisions))
        (zipmap (-> decisions keys sort))))
 
-(defn solve [opts expression]
-  (let [constraint (>> {:e (translate expression)}
-                       "constraint {{e}};")
-        var-declarations (decisions->var-declarations 
-                          (decisions expression)
-                          (bindings expression))
-        output (->output (decisions expression))
-        mzn (apply str (interpose "\n" (conj var-declarations constraint output)))
-        _ (def mzn mzn)
-        response (fetch mzn)
-        result (when response (detranspile response (decisions expression)))]
-    result))
+(comment
+  (defn jared [expression type]
+    (contains? (codomain expression) type))
+  (codomain (?> (+ 1 (fresh))))
+  )
+
+(defn solve [{:keys [all? async?] :as opts}
+             constraint
+             objective]
+  {:pre [(some? constraint)
+         (contains? (codomain constraint) Bool)
+         (or (nil? objective) (contains? (codomain objective) Numeric))]}
+  (let [constraint-str (>> {:e (translate constraint)}
+                           "constraint {{e}};")
+        directive-str (if objective
+                        (>> {:e (translate objective)}
+                            "solve maximize {{e}};")
+                        "solve satisfy;")
+        merged-decisions (merge-with-key
+                          intersect-domains
+                          (decisions constraint)
+                          (when objective (decisions objective)))
+        var-declarations-str (decisions->var-declarations
+                              merged-decisions
+                              (merge-with-key
+                               (partial intersect-bindings nil)
+                               (bindings constraint)
+                               (when objective (bindings objective))))
+        output-str (->output merged-decisions)
+        mzn (apply str (interpose "\n" (cond-> var-declarations-str
+                                         constraint-str (conj constraint-str)
+                                         :always (conj output-str directive-str))))
+        _ (def mzn mzn)]
+    (if *debug*
+      (do (spit "scratch/mzn" mzn) mzn)
+      ((if async?
+         adapter/call-async
+         adapter/call-sync)
+       all?
+       mzn
+       (partial detranspile merged-decisions)))))
+
+(comment
+  (hyperfiddle.rcf/enable!)
+  
+  (satisfy 
+   {:all? true} 
+   (>= 2 (+ (fresh) 3)))
+  )
 
 (defmacro satisfy
   ([term]
-   `(satisfy {} ~term))
-  ([opts term]
-   `(solve ~opts (expression ~term))))
+   `(satisfy ~term {}))
+  ([term opts]
+   `(solve
+     ~opts
+     (expression ~term)
+     nil)))
+
+(tests
+ (tests "constraint must be boolean"
+        (throws? (satisfy (+ (fresh) 1))) := true
+        (throws? (satisfy (= (fresh) 1))) := false
+        )
+ )
 
 (comment
+  (let [a (fresh)]
+    (solve nil (?> (= 1 (mod (fresh) 12))) nil))
   
-  (satisfy {} (contains? (into #{} (range 2 10)) (fresh)))
+  (let [a (fresh)]
+    (satisfy (= 1 (mod (fresh) 12))))
+  
+  (let [a (fresh)] 
+    (maximize a))
+  
+
+
+  )
+
+(defmacro maximize
+  ([objective constraint]
+   `(maximize ~objective ~constraint {}))
+  ([objective constraint opts]
+   `(solve
+     ~opts
+     (expression ~constraint)
+     (expression ~objective))))
+
+(tests
+ (-> (let [a (fresh)]
+       (maximize a (and (>= a 3000) (= 3 (mod a 12)))))
+     first 
+     vals
+     boolean) 
+ := true
+
+
+ (tests "objective must be numeric"
+        (throws? (maximize (= (fresh) 1) true)) := true)
+
+ (tests "constraint is required"
+        (throws? (maximize (fresh) nil))
+        := true)
+ (tests "types are unified across the objective and constraint"
+        (let [a (fresh)]
+
+          (throws? (maximize (+ a 12) (contains? a 12)))
+          := true
+
+          (throws? (maximize (+ a 12) (contains? #{} a)))
+          := false)))
+
+(defn dithered? [x]
+  (boolean (decisions x)))
+
+(tests
+ (dithered? (?> (+ (fresh) 1))) := true
+ (dithered? (?> (+ 1 1))) := false
+ )
+
+(comment
+  (hyperfiddle.rcf/enable!)
+  (dithered? (?> (+ 1 (fresh))))
+  
+  (decisions #{(fresh)})
+  supers
+  clojure.set/superset?
+  
+  (satisfy
+   {:all? true
+    :async? true}
+   (contains? (into #{} (range 2 10)) (fresh)))
   ; *, +, !, -, _, '?, <, > and =
 
 
@@ -580,6 +706,8 @@
         b (?> (+ a 4))]
     (get (satisfy (= b 6))
          a))
+  
+  number?
 
   (forall [x (fresh)]
           (not= (contains? a)))
@@ -598,8 +726,6 @@
    (let [a (fresh)
          b (expression (+ a 2))]
      (expression (+ b 3))))
-
-  (def bind)
 
   (clojure.set/intersection)
 
@@ -622,9 +748,6 @@
 
   2
   )
-(declare satisfy-all)
-(declare maximize)
-(declare maximize-all)
 
 
 #_(extend-protocol IExpress

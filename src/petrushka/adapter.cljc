@@ -16,12 +16,12 @@
 (defn filtering-chan
   ([]
    (filtering-chan identity))
-  ([transpile-fn]
+  ([xfn]
    (async/chan 
     1 
     (comp 
      (filter (complement system-text))
-     (map transpile-fn)))))
+     (map (or xfn identity))))))
 
 (defmulti call-minizinc 
   (fn [env _chan _mzn _all?] env))
@@ -66,8 +66,8 @@
       % := nil)))
 
 (defn call-sync
-  [all? mzn decisions]
-  (let [chan (filtering-chan #_(partial detranspile decisions))
+  [all? mzn xfn]
+  (let [chan (filtering-chan xfn)
         _ (future (call-minizinc (env) chan mzn all?))
         solutions (async/<!!
                    (async/go-loop [solutions []]
@@ -90,8 +90,8 @@
    (boolean (#{"x = 4;" "x = 5;"} c)) := true))
 
 (defn call-async
-  [all? mzn decisions]
-  (let [chan (filtering-chan #_(partial detranspile decisions))]
+  [all? mzn xfn]
+  (let [chan (filtering-chan xfn)]
     (future (call-minizinc (env) chan mzn all?))
     chan))
 

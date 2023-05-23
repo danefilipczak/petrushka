@@ -1,3 +1,4 @@
 {:deps {failjure/failjure {:mvn/version "2.2.0"}
         minizinc/clojure2minizinc {:mvn/version "0.2.0"}
-        hyperfiddle/rcf {:git/url "https://github.com/hyperfiddle/rcf.git" :sha "c399b1b621b19dc576ea46cd4b254477e1ca9756"}}}
+        com.hyperfiddle/rcf {:mvn/version "20220926-202227"}
+        org.clojure/core.async {:mvn/version "1.6.673"}}}
