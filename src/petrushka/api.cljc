@@ -5,46 +5,11 @@
             [hyperfiddle.rcf :refer [tests]]
             [petrushka.utils.string :refer [>>]]
             [petrushka.adapter :as adapter]
+            [petrushka.types :as types]
+            [petrushka.utils.test :as utils.test]
             [clojure.spec.alpha :as s]))
 
 (def ^:dynamic *debug* false)
-
-(defn cljs-env?
-  "Take the &env from a macro, and tell whether we are expanding into cljs."
-  [env]
-  (boolean (:ns env)))
-
-(defmacro try-catchall
-  "A cross-platform variant of try-catch that catches all exceptions.
-   Does not support finally, and does not need an exception class."
-  [& body]
-  (let [try-body (butlast body)
-        [catch sym & catch-body :as catch-form] (last body)]
-    (assert (= catch 'catch))
-    (assert (symbol? sym))
-    (if (cljs-env? &env)
-      `(try ~@try-body (~'catch js/Object ~sym ~@catch-body))
-      `(try ~@try-body (~'catch Throwable ~sym ~@catch-body)))))
-
-(defmacro throws? [body]
-  `(try-catchall
-    ~body
-    false
-    (catch e# true)))
-
-(def Numeric ::numeric)
-(def Set ::set)
-(def Bool ::boolean)
-#_(def Sequential ::sequential)
-#_(def Null ::null)
-
-(def all-var-types 
-  #{Numeric 
-    Set
-    Bool
-    #_Sequential
-    #_Null})
-
 (defprotocol IExpress
   (write [self]) 
   (domainv [self])
@@ -89,10 +54,10 @@
     (type-error! expression domain1 domain2)))
 
 (tests
- (intersect-domains 2 {Bool 2} {Bool 2}) := {Bool 2}
- (intersect-domains 2 {Bool 2} {Bool 2 Numeric 2}) := {Bool 2}
- (intersect-domains 2 {Bool 2} {Bool 3}) := {Bool 3} ;; right to left precidence for conflicting keys
- (throws? (intersect-domains 2 {Bool 2} {Numeric 2})) := true
+ (intersect-domains 2 {types/Bool 2} {types/Bool 2}) := {types/Bool 2}
+ (intersect-domains 2 {types/Bool 2} {types/Bool 2 types/Numeric 2}) := {types/Bool 2}
+ (intersect-domains 2 {types/Bool 2} {types/Bool 3}) := {types/Bool 3} ;; right to left precidence for conflicting keys
+ (utils.test/throws? (intersect-domains 2 {types/Bool 2} {types/Numeric 2})) := true
  )
 
 (defn binding-set [x]
@@ -120,8 +85,8 @@
 (defrecord Decision [id]
   IExpress
   (write [self] (list 'fresh (:id self)))
-  (codomain [self] (zipmap all-var-types (repeat self)))
-  (decisions [self] {self (zipmap all-var-types (repeat self))})
+  (codomain [self] (zipmap types/all-var-types (repeat self)))
+  (decisions [self] {self (zipmap types/all-var-types (repeat self))})
   (bindings [self] nil)
   (validate [self] self)
   (translate [self] (str (:id self))))
@@ -194,7 +159,7 @@
     (get (bindings (bind (range 0 10) a)) a))
    := [#{0 1 2 3 4 5 6 7 8 9} :exp]
 
-   (throws?
+   (utils.test/throws?
     (intersect-bindings
      :exp
      a
@@ -223,7 +188,7 @@
 (extend-protocol IExpress
   clojure.lang.IPersistentSet
   (write [self] (set (map write self)))
-  (codomain [self] {Set self})
+  (codomain [self] {types/Set self})
   (decisions [self] (->> self
                      (map decisions)
                      (apply merge-with-key intersect-domains)))
@@ -235,7 +200,7 @@
                          (apply str (interpose "," (map translate self)))} 
                         "{{{elements}}}")))
 
-(spec/def ::domain (spec/map-of all-var-types #(boolean (write %))))
+(spec/def ::domain (spec/map-of types/all-var-types #(boolean (write %))))
 (spec/def ::domainv (spec/coll-of ::domain))
 (spec/def ::decisions (spec/nilable (spec/map-of decision? ::domain)))
 (spec/def ::binding (spec/tuple (every-pred set? sorted?) #(boolean (write %))))
@@ -244,7 +209,7 @@
 (extend-protocol IExpress
   Number
   (write [self] self)
-  (codomain [self] {Numeric self})
+  (codomain [self] {types/Numeric self})
   (decisions [_self] nil)
   (bindings [_self] nil)
   (validate [self] self)
@@ -253,7 +218,7 @@
 (extend-protocol IExpress
   Boolean
   (write [self] self)
-  (codomain [self] {Bool self})
+  (codomain [self] {types/Bool self})
   (decisions [_self] nil)
   (bindings [_self] nil)
   (validate [self] self)
@@ -277,7 +242,7 @@
   (decisions [_self] nil)
   (validate [self] self))
 
-(defn unify-argv-vars [expression]
+(defn unify-argv-decisions [expression]
   {:post [(spec/valid? ::decisions %)]}
   (->> (:argv expression)
        ;; this line is only relevant if the arg is a decision. otherwise we're constantly restricting the decision to the domains of its call sites.
@@ -321,9 +286,9 @@
 (defrecord TermPlus [argv]
   IExpress
   (write [_self] (apply list '+ (map write argv)))
-  (codomain [self] {Numeric self})
-  (domainv [self] (repeat {Numeric self}))
-  (decisions [self] (unify-argv-vars self))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] (repeat {types/Numeric self}))
+  (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-nary-operation "+" (map translate (:argv self)))))
@@ -331,9 +296,9 @@
 (defrecord TermAnd [argv]
   IExpress
   (write [_self] (apply list 'and (map write argv)))
-  (codomain [self] {Bool self})
-  (domainv [self] (repeat {Bool self}))
-  (decisions [self] (unify-argv-vars self))
+  (codomain [self] {types/Bool self})
+  (domainv [self] (repeat {types/Bool self}))
+  (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-nary-operation "/\\" (map translate (:argv self)))))
@@ -357,9 +322,9 @@
 (defrecord TermGreaterThanOrEqualTo [argv]
   IExpress
   (write [_self] (apply list '>= (map write argv)))
-  (codomain [self] {Bool self})
-  (domainv [self] (repeat {Numeric self}))
-  (decisions [self] (unify-argv-vars self))
+  (codomain [self] {types/Bool self})
+  (domainv [self] (repeat {types/Numeric self}))
+  (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-comparator self ">=" ->TermGreaterThanOrEqualTo)))
@@ -373,9 +338,9 @@
 (defrecord TermModulo [argv]
   IExpress
   (write [_self] (apply list 'mod (map write argv)))
-  (codomain [self] {Numeric self})
-  (domainv [self] [{Numeric self} {Numeric self}])
-  (decisions [self] (unify-argv-vars self))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] [{types/Numeric self} {types/Numeric self}])
+  (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (apply translate-binary-operation "mod" (map translate argv))))
@@ -383,9 +348,9 @@
 (defrecord TermEquals [argv]
   IExpress
   (write [_self] (apply list '= (map write argv)))
-  (codomain [self] {Bool self})
-  (domainv [self] (repeat (zipmap all-var-types (repeat self))))
-  (decisions [self] (unify-argv-vars self))
+  (codomain [self] {types/Bool self})
+  (domainv [self] (repeat (zipmap types/all-var-types (repeat self))))
+  (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self]
     (when (empty? (->> (:argv self)
@@ -398,9 +363,9 @@
 (defrecord TermIntersection [argv]
   IExpress
   (write [_self] (apply list 'clojure.set/intersection (map write argv)))
-  (codomain [self] {Set self})
-  (domainv [self] (repeat {Set self}))
-  (decisions [self] (unify-argv-vars self))
+  (codomain [self] {types/Set self})
+  (domainv [self] (repeat {types/Set self}))
+  (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-nary-operation "intersect" (map translate (:argv self)))))
@@ -408,9 +373,9 @@
 (defrecord TermContains [argv]
   IExpress
   (write [_self] (apply list 'contains? (map write argv)))
-  (codomain [self] {Bool self})
-  (domainv [self] [{Set self} {Numeric self}])
-  (decisions [self] (unify-argv-vars self))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Set self} {types/Numeric self}])
+  (decisions [self] (unify-argv-decisions self))
   (bindings [self] (unify-argv-bindings self))
   (validate [self] (validate-domains self))
   (translate [self] (translate-binary-operation
@@ -508,28 +473,28 @@
        (map (fn [[decision domain]]
               (let [set (binding-set (get bindings decision))
                     type (domain->type domain)
-                    _ (when (and (= type Set) (nil? set))
+                    _ (when (and (= type types/Set) (nil? set))
                         (throw (ex-info (str "unbound set decision: " (write decision)) {})))
                     env {:range (some-> set translate)
                          :decision (translate decision)}
                     >>* (partial >> env)]
                 (cond
-                  (= type Set) (>>* "var set of {{range}}: {{decision}};")
-                  (= type Numeric) (>>* "var int: {{decision}};")
-                  (= type Bool) (>>* "var bool: {{decision}};")))))
+                  (= type types/Set) (>>* "var set of {{range}}: {{decision}};")
+                  (= type types/Numeric) (>>* "var int: {{decision}};")
+                  (= type types/Bool) (>>* "var types/Bool: {{decision}};")))))
        sort))
 
 (defmulti detranspile*
   (fn [decisions [decision _out-str]]
     (domain->type (get decisions decision))))
 
-(defmethod detranspile* Numeric [_ [_ out-str]]
+(defmethod detranspile* types/Numeric [_ [_ out-str]]
   (Integer/parseInt out-str))
 
-(defmethod detranspile* Bool [_ [_ out-str]]
+(defmethod detranspile* types/Bool [_ [_ out-str]]
   (Boolean/parseBoolean out-str))
 
-(defmethod detranspile* Set [_ [_ out-str]]
+(defmethod detranspile* types/Set [_ [_ out-str]]
   (if (re-matches #"[0-9]*\.\.[0-9]*" out-str)
     (let [[lower upper] (->> (string/split out-str #"\.\.")
                              (map #(Integer/parseInt %)))]
@@ -556,8 +521,8 @@
              constraint
              objective]
   {:pre [(some? constraint)
-         (contains? (codomain constraint) Bool)
-         (or (nil? objective) (contains? (codomain objective) Numeric))]}
+         (contains? (codomain constraint) types/Bool)
+         (or (nil? objective) (contains? (codomain objective) types/Numeric))]}
   (let [constraint-str (>> {:e (translate constraint)}
                            "constraint {{e}};")
         directive-str (if objective
@@ -607,8 +572,8 @@
 
 (tests
  (tests "constraint must be boolean"
-        (throws? (satisfy (+ (fresh) 1))) := true
-        (throws? (satisfy (= (fresh) 1))) := false
+        (utils.test/throws? (satisfy (+ (fresh) 1))) := true
+        (utils.test/throws? (satisfy (= (fresh) 1))) := false
         )
  )
 
@@ -644,19 +609,19 @@
  := true
 
 
- (tests "objective must be numeric"
-        (throws? (maximize (= (fresh) 1) true)) := true)
+ (tests "objective must be types/Numeric"
+        (utils.test/throws? (maximize (= (fresh) 1) true)) := true)
 
  (tests "constraint is required"
-        (throws? (maximize (fresh) nil))
+        (utils.test/throws? (maximize (fresh) nil))
         := true)
  (tests "types are unified across the objective and constraint"
         (let [a (fresh)]
 
-          (throws? (maximize (+ a 12) (contains? a 12)))
+          (utils.test/throws? (maximize (+ a 12) (contains? a 12)))
           := true
 
-          (throws? (maximize (+ a 12) (contains? #{} a)))
+          (utils.test/throws? (maximize (+ a 12) (contains? #{} a)))
           := false)))
 
 (defn dithered? [x]
