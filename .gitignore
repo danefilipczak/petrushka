@@ -2,3 +2,7 @@
 /.clj-kondo
 /.cpcache
 /.lsp
+/scratch
+/models
+/flatzinc
+.nrepl-port
