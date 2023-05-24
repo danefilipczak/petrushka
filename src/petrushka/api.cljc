@@ -1,14 +1,15 @@
 (ns petrushka.api
   (:require [clojure.java.shell :as shell]
             [clojure.spec.alpha :as spec]
+            [clojure.spec.alpha :as s]
             [clojure.string :as string]
             [hyperfiddle.rcf :refer [tests]]
-            [petrushka.utils.string :refer [>>]]
             [petrushka.adapter :as adapter]
-            [petrushka.types :as types]
             [petrushka.protocols :as protocols]
-            [petrushka.utils.test :as utils.test]
-            [clojure.spec.alpha :as s]))
+            [petrushka.types :as types]
+            [petrushka.utils.string :refer [>>]]
+            [petrushka.utils.symbol :refer [normalize-symbol]]
+            [petrushka.utils.test :as utils.test]))
 
 (def ^:dynamic *debug* false)
 
@@ -276,16 +277,6 @@
        (map protocols/bindings)
        (apply merge-with-key (partial intersect-bindings e))))
 
-(defrecord TermPlus [argv]
-  protocols/IExpress
-  (write [_self] (apply list '+ (map protocols/write argv)))
-  (codomain [self] {types/Numeric self})
-  (domainv [self] (repeat {types/Numeric self}))
-  (decisions [self] (unify-argv-decisions self))
-  (bindings [self] (unify-argv-bindings self))
-  (validate [self] (validate-domains self))
-  (translate [self] (translate-nary-operation "+" (map protocols/translate (:argv self)))))
-
 (defrecord TermAnd [argv]
   protocols/IExpress
   (write [_self] (apply list 'and (map protocols/write argv)))
@@ -380,30 +371,29 @@
   (protocols/translate (expression (contains? (fresh) (fresh))))
   )
 
-(defmulti rewrite* identity)
+(defmethod protocols/rewrite* >= [_] ->TermGreaterThanOrEqualTo)
 
-(defmethod rewrite* + [_] ->TermPlus)
+(defmethod protocols/rewrite* = [_] ->TermEquals)
 
-(defmethod rewrite* >= [_] ->TermGreaterThanOrEqualTo)
+(defmethod protocols/rewrite* mod [_] ->TermModulo)
 
-(defmethod rewrite* = [_] ->TermEquals)
+(defmethod protocols/rewrite* clojure.set/intersection [_] ->TermIntersection)
 
-(defmethod rewrite* mod [_] ->TermModulo)
+(defmethod protocols/rewrite* contains? [_] ->TermContains)
 
-(defmethod rewrite* clojure.set/intersection [_] ->TermIntersection)
-
-(defmethod rewrite* contains? [_] ->TermContains)
-
-(defmethod rewrite* :default [x] x)
-
-(defn rewrite [form-fn]
-  (let [ast-constructor-fn (rewrite* form-fn)]
+(defn rewrite-fn [form-fn]
+  (let [ast-constructor-fn (protocols/rewrite* form-fn)]
     (if (= form-fn ast-constructor-fn)
       form-fn
       (fn [& args]
         (if (some protocols/decisions args)
           (protocols/validate (ast-constructor-fn args))
           (apply form-fn args))))))
+
+(defn rewrite-macro-sym [x]
+  (println x)
+  (println (symbol? x))
+  (protocols/rewrite-macro (normalize-symbol x)))
 
 (defmacro and* [& args]
   `(let [args# (list ~@args)]
@@ -418,20 +408,51 @@
                (= (+ 3 (fresh)) (+ 1 2))))
   )
 
+(defmethod protocols/rewrite-macro (normalize-symbol 'and)
+  [_]
+  (normalize-symbol 'and*))
+
+(defn fn-inspect
+  "returns true if x is a symbol that resolves to a fn whose var satisfies var-predicate"
+  [var-predicate x]
+  (when (symbol? x)
+    (when-let [v (resolve x)]
+      (when-let [value (clojure.test/get-possibly-unbound-var v)]
+        (and (fn? value)
+             (var-predicate v))))))
+
+(def macro-sym? (partial fn-inspect (comp boolean :macro meta)))
+(def function-sym? (partial fn-inspect (comp not :macro meta)))
+
 (defmacro expression [form]
-  ;; todo:: can you rewrite this in a way that doesnt use var-get?
   (clojure.walk/postwalk
    (fn [f]
-     (let [macros {'and 'and*
-                   'fn 'fn}
-           f# (get macros f f)]
-       (if  (and (symbol? f)
-                 (not (contains? macros f))
-                 (resolve f)
-                 (not= (rewrite* (var-get (resolve f))) (var-get (resolve f))))
-         `(rewrite ~f#)
-         f#)))
+     (cond (macro-sym? f) (protocols/rewrite-macro (normalize-symbol f))
+           (function-sym? f) `(rewrite-fn ~f)
+           :else f))
    form))
+
+(comment
+  
+  (symbol (resolve 'and))
+  (symbol (resolve 'a))
+  (?> (and (fresh) true))
+
+
+  (meta (fn? (var-get (resolve 'and*))))
+
+  ((var-get (resolve 'and)) '(1 2))
+
+  (meta (resolve 'and*))
+
+  (var-get (resolve 'aaaa))
+
+  petrushka.api
+  *ns*
+  (resolve 'and*)
+  (resolve 'and*)
+  (macroexpand '(expression (and (fresh))))
+  )
 
 (defmacro ?> 
   "The dither operator.
@@ -540,77 +561,6 @@
        mzn
        (partial detranspile merged-decisions)))))
 
-(comment
-  (hyperfiddle.rcf/enable!)
-  
-  (satisfy 
-   {:all? true} 
-   (>= 2 (+ (fresh) 3)))
-  )
-
-(defmacro satisfy
-  ([term]
-   `(satisfy ~term {}))
-  ([term opts]
-   `(solve
-     ~opts
-     (expression ~term)
-     nil)))
-
-(tests
- (tests "constraint must be boolean"
-        (utils.test/throws? (satisfy (+ (fresh) 1))) := true
-        (utils.test/throws? (satisfy (= (fresh) 1))) := false
-        )
- )
-
-(comment
-  (let [a (fresh)]
-    (solve nil (?> (= 1 (mod (fresh) 12))) nil))
-  
-  (let [a (fresh)]
-    (satisfy (= 1 (mod (fresh) 12))))
-  
-  (let [a (fresh)] 
-    (maximize a))
-  
-
-
-  )
-
-(defmacro maximize
-  ([objective constraint]
-   `(maximize ~objective ~constraint {}))
-  ([objective constraint opts]
-   `(solve
-     ~opts
-     (expression ~constraint)
-     (expression ~objective))))
-
-(tests
- (-> (let [a (fresh)]
-       (maximize a (and (>= a 3000) (= 3 (mod a 12)))))
-     first 
-     vals
-     boolean) 
- := true
-
-
- (tests "objective must be types/Numeric"
-        (utils.test/throws? (maximize (= (fresh) 1) true)) := true)
-
- (tests "constraint is required"
-        (utils.test/throws? (maximize (fresh) nil))
-        := true)
- (tests "types are unified across the objective and constraint"
-        (let [a (fresh)]
-
-          (utils.test/throws? (maximize (+ a 12) (contains? a 12)))
-          := true
-
-          (utils.test/throws? (maximize (+ a 12) (contains? #{} a)))
-          := false)))
-
 (defn dithered? [x]
   (boolean (protocols/decisions x)))
 
@@ -626,11 +576,6 @@
   (protocols/decisions #{(fresh)})
   supers
   clojure.set/superset?
-  
-  (satisfy
-   {:all? true
-    :async? true}
-   (contains? (into #{} (range 2 10)) (fresh)))
   ; *, +, !, -, _, '?, <, > and =
 
 
@@ -650,14 +595,8 @@
 
   (def a (bind (range 10) (fresh)))
   (def b (fresh))
-  (satisfy (= #{1 2 3} (clojure.set/intersection a #{1 2 3})))
 
   (def ?= expression)
-
-  (let [a (fresh)
-        b (?> (+ a 4))]
-    (get (satisfy (= b 6))
-         a))
   
   number?
 

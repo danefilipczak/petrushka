@@ -8,3 +8,11 @@
   (translate [self])
   (validate [self])
   (bindings [self]))
+
+(defmulti rewrite* identity)
+
+(defmethod rewrite* :default [x] x)
+
+(defmulti rewrite-macro identity)
+
+(defmethod rewrite-macro :default [x] x)

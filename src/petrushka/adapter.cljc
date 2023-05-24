@@ -7,7 +7,7 @@
 (defn env []
   #?(:clj :clj :cljs :cljs))
 
-(defn system-text [x]
+(defn system-text? [x]
   (boolean
    (or (string/includes? x "===")
        (string/includes? x "---")
@@ -20,7 +20,7 @@
    (async/chan 
     1 
     (comp 
-     (filter (complement system-text))
+     (filter (complement system-text?))
      (map (or xfn identity))))))
 
 (defmulti call-minizinc 
