@@ -1,4 +1,4 @@
 (ns petrushka.utils.symbol)
 
-(defn normalize-symbol [s]
+(defn fully-qualify-symbol [s]
   (symbol (resolve s)))

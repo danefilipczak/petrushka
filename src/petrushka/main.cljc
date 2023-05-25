@@ -31,7 +31,7 @@
 
 (tests "maximize"
  (-> (let [a (api/fresh)]
-       (maximize a (and (>= a 3000) (= 3 (mod a 12)))))
+       (maximize a (clojure.core/and (>= a 3000) (= 3 (mod a 12)))))
      first 
      vals
      boolean) 

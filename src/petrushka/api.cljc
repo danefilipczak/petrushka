@@ -8,7 +8,7 @@
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.utils.string :refer [>>]]
-            [petrushka.utils.symbol :refer [normalize-symbol]]
+            [petrushka.utils.symbol :refer [fully-qualify-symbol]]
             [petrushka.utils.test :as utils.test]))
 
 (def ^:dynamic *debug* false)
@@ -390,27 +390,11 @@
           (protocols/validate (ast-constructor-fn args))
           (apply form-fn args))))))
 
-(defn rewrite-macro-sym [x]
-  (println x)
-  (println (symbol? x))
-  (protocols/rewrite-macro (normalize-symbol x)))
-
-(defmacro and* [& args]
-  `(let [args# (list ~@args)]
-     (if (some protocols/decisions args#)
-       (protocols/validate (->TermAnd args#))
-       (and ~@args))))
-
-(comment 
-  
-  (expression (conjunction 
-               (= 6 (fresh))
-               (= (+ 3 (fresh)) (+ 1 2))))
-  )
-
-(defmethod protocols/rewrite-macro (normalize-symbol 'and)
+(defmethod 
+  protocols/rewrite-macro 
+  (fully-qualify-symbol 'and)
   [_]
-  (normalize-symbol 'and*))
+  ->TermAnd)
 
 (defn fn-inspect
   "returns true if x is a symbol that resolves to a fn whose var satisfies var-predicate"
@@ -427,10 +411,37 @@
 (defmacro expression [form]
   (clojure.walk/postwalk
    (fn [f]
-     (cond (macro-sym? f) (protocols/rewrite-macro (normalize-symbol f))
-           (function-sym? f) `(rewrite-fn ~f)
-           :else f))
+     (cond
+       (and (list? f) (macro-sym? (first f)))
+       (let [ast-constructor-fn (protocols/rewrite-macro (fully-qualify-symbol (first f)))]
+         (if (not= (first f) ast-constructor-fn)
+           `(if (some protocols/decisions ~(vec (rest f)))
+              (protocols/validate (~ast-constructor-fn ~(vec (rest f))))
+              ~f)
+           f))
+
+       (function-sym? f) `(rewrite-fn ~f)
+       :else f))
    form))
+
+(comment
+  (expression (and (fresh) (fresh)))
+  (macroexpand '(expression (and 1 (fresh))))
+
+  (expression (and (= 2 (fresh)) (fresh)))
+
+  (macroexpand '(expression (and (= 2 (fresh)) (fresh))))
+  (expression (and (= 1 1) (fresh)))
+
+
+  (petrushka.api/jared clojure.core/and)
+  
+  ((petrushka.api/jared clojure.core/and) 1 2)
+  
+  ((petrushka.api/jared (petrushka.utils.symbol/fully-qualify-symbol and)) 1 2)
+  (expression (and 1 2))
+  (macroexpand '(expression (and 1 2)))
+  )
 
 (comment
   

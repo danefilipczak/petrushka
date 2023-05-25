@@ -13,6 +13,9 @@
 
 (defmethod rewrite* :default [x] x)
 
-(defmulti rewrite-macro identity)
+(defmulti rewrite-macro
+  (fn [sym]
+    (assert (qualified-symbol? sym))
+    sym))
 
 (defmethod rewrite-macro :default [x] x)
