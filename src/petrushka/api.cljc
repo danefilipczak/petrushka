@@ -8,7 +8,7 @@
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.utils.string :refer [>>]]
-            [petrushka.utils.symbol :refer [fully-qualify-symbol]]
+            [petrushka.utils.symbol :as symbols]
             [petrushka.utils.test :as utils.test]))
 
 (def ^:dynamic *debug* false)
@@ -85,19 +85,6 @@
   (validate [self] self)
   (translate [self] (str (:id self))))
 
-(defn fresh
-  "Mint a fresh decision."
-  ([]
-   (fresh (str (gensym))))
-  ([id]
-   {:pre [(string? id)]}
-   (if (re-matches #"[A-Za-z][A-Za-z0-9_]*" id)
-     (->Decision id)
-     (throw (ex-info
-             (>> {:id id}
-                 "Invalid identifier: {{id}}. Identifiers should start with a letter and consist only of letters, numbers, and underscores.")
-             {})))))
-
 (defrecord Binding [set decision]
   protocols/IExpress
   (write [self] (list 'bind set (protocols/write decision)))
@@ -138,7 +125,8 @@
     (binding-error! decision binding1 binding2)))
 
 (tests
- (let [a (fresh)]
+ ;; this needs to be moved into a test ns so that it can call main/fresh
+ #_(let [a (fresh)]
    (intersect-bindings
     :exp
     a
@@ -277,110 +265,6 @@
        (map protocols/bindings)
        (apply merge-with-key (partial intersect-bindings e))))
 
-(defrecord TermAnd [argv]
-  protocols/IExpress
-  (write [_self] (apply list 'and (map protocols/write argv)))
-  (codomain [self] {types/Bool self})
-  (domainv [self] (repeat {types/Bool self}))
-  (decisions [self] (unify-argv-decisions self))
-  (bindings [self] (unify-argv-bindings self))
-  (validate [self] (validate-domains self))
-  (translate [self] (translate-nary-operation "/\\" (map protocols/translate (:argv self)))))
-
-(defn conjunction 
-  ([& args]
-   (if (> (count args) 1)
-     (protocols/validate (->TermAnd args))
-     (first args))))
-
-(defn translate-comparator [self op constructor]
-  (case (count (:argv self))
-    1 (protocols/translate true)
-    2 (apply translate-binary-operation op (map protocols/translate (:argv self)))
-    (->> (:argv self)
-         (partition 2 1)
-         (map constructor)
-         (apply conjunction)
-         protocols/translate)))
-
-(defrecord TermGreaterThanOrEqualTo [argv]
-  protocols/IExpress
-  (write [_self] (apply list '>= (map protocols/write argv)))
-  (codomain [self] {types/Bool self})
-  (domainv [self] (repeat {types/Numeric self}))
-  (decisions [self] (unify-argv-decisions self))
-  (bindings [self] (unify-argv-bindings self))
-  (validate [self] (validate-domains self))
-  (translate [self] (translate-comparator self ">=" ->TermGreaterThanOrEqualTo)))
-
-(comment
-  
-  (protocols/translate (expression (>= 1 (fresh) 3)))
-  (partition 2 1 [1 2 3 4])
-  )
-
-(defrecord TermModulo [argv]
-  protocols/IExpress
-  (write [_self] (apply list 'mod (map protocols/write argv)))
-  (codomain [self] {types/Numeric self})
-  (domainv [self] [{types/Numeric self} {types/Numeric self}])
-  (decisions [self] (unify-argv-decisions self))
-  (bindings [self] (unify-argv-bindings self))
-  (validate [self] (validate-domains self))
-  (translate [self] (apply translate-binary-operation "mod" (map protocols/translate argv))))
-
-(defrecord TermEquals [argv]
-  protocols/IExpress
-  (write [_self] (apply list '= (map protocols/write argv)))
-  (codomain [self] {types/Bool self})
-  (domainv [self] (repeat (zipmap types/all-decision-types (repeat self))))
-  (decisions [self] (unify-argv-decisions self))
-  (bindings [self] (unify-argv-bindings self))
-  (validate [self]
-    (when (empty? (->> (:argv self)
-                       (map (comp set keys protocols/codomain))
-                       (apply clojure.set/intersection)))
-      (throw (ex-info "equality testing requires consistent types" {})))
-    self)
-  (translate [self] (translate-comparator self "=" ->TermEquals)))
-
-(defrecord TermIntersection [argv]
-  protocols/IExpress
-  (write [_self] (apply list 'clojure.set/intersection (map protocols/write argv)))
-  (codomain [self] {types/Set self})
-  (domainv [self] (repeat {types/Set self}))
-  (decisions [self] (unify-argv-decisions self))
-  (bindings [self] (unify-argv-bindings self))
-  (validate [self] (validate-domains self))
-  (translate [self] (translate-nary-operation "intersect" (map protocols/translate (:argv self)))))
-
-(defrecord TermContains [argv]
-  protocols/IExpress
-  (write [_self] (apply list 'contains? (map protocols/write argv)))
-  (codomain [self] {types/Bool self})
-  (domainv [self] [{types/Set self} {types/Numeric self}])
-  (decisions [self] (unify-argv-decisions self))
-  (bindings [self] (unify-argv-bindings self))
-  (validate [self] (validate-domains self))
-  (translate [self] (translate-binary-operation
-                     "in"
-                     (protocols/translate (second (:argv self)))
-                     (protocols/translate (first (:argv self))))))
-
-(comment
-  (protocols/translate (expression (contains? (fresh) (fresh))))
-  )
-
-(defmethod protocols/rewrite* >= [_] ->TermGreaterThanOrEqualTo)
-
-(defmethod protocols/rewrite* = [_] ->TermEquals)
-
-(defmethod protocols/rewrite* mod [_] ->TermModulo)
-
-(defmethod protocols/rewrite* clojure.set/intersection [_] ->TermIntersection)
-
-(defmethod protocols/rewrite* contains? [_] ->TermContains)
-
 (defn rewrite-fn [form-fn]
   (let [ast-constructor-fn (protocols/rewrite* form-fn)]
     (if (= form-fn ast-constructor-fn)
@@ -389,12 +273,6 @@
         (if (some protocols/decisions args)
           (protocols/validate (ast-constructor-fn args))
           (apply form-fn args))))))
-
-(defmethod 
-  protocols/rewrite-macro 
-  (fully-qualify-symbol 'and)
-  [_]
-  ->TermAnd)
 
 (defn fn-inspect
   "returns true if x is a symbol that resolves to a fn whose var satisfies var-predicate"
@@ -413,7 +291,7 @@
    (fn [f]
      (cond
        (and (list? f) (macro-sym? (first f)))
-       (let [ast-constructor-fn (protocols/rewrite-macro (fully-qualify-symbol (first f)))]
+       (let [ast-constructor-fn (protocols/rewrite-macro (symbols/fully-qualify-symbol (first f)))]
          (if (not= (first f) ast-constructor-fn)
            `(if (some protocols/decisions ~(vec (rest f)))
               (protocols/validate (~ast-constructor-fn ~(vec (rest f))))
@@ -424,52 +302,23 @@
        :else f))
    form))
 
-(comment
-  (expression (and (fresh) (fresh)))
-  (macroexpand '(expression (and 1 (fresh))))
+(defn conjunction [& args]
+  (if (seq (rest args))
+    (expression 
+     (and 
+      (first args) 
+      (apply conjunction (rest args))))
+    (first args)))
 
-  (expression (and (= 2 (fresh)) (fresh)))
-
-  (macroexpand '(expression (and (= 2 (fresh)) (fresh))))
-  (expression (and (= 1 1) (fresh)))
-
-
-  (petrushka.api/jared clojure.core/and)
-  
-  ((petrushka.api/jared clojure.core/and) 1 2)
-  
-  ((petrushka.api/jared (petrushka.utils.symbol/fully-qualify-symbol and)) 1 2)
-  (expression (and 1 2))
-  (macroexpand '(expression (and 1 2)))
-  )
-
-(comment
-  
-  (symbol (resolve 'and))
-  (symbol (resolve 'a))
-  (?> (and (fresh) true))
-
-
-  (meta (fn? (var-get (resolve 'and*))))
-
-  ((var-get (resolve 'and)) '(1 2))
-
-  (meta (resolve 'and*))
-
-  (var-get (resolve 'aaaa))
-
-  petrushka.api
-  *ns*
-  (resolve 'and*)
-  (resolve 'and*)
-  (macroexpand '(expression (and (fresh))))
-  )
-
-(defmacro ?> 
-  "The dither operator.
-   dith·er - noun: to be indecisive."
-  [form]
-  `(expression ~form))
+(defn translate-comparator [self op constructor]
+  (case (count (:argv self))
+    1 (protocols/translate true)
+    2 (apply translate-binary-operation op (map protocols/translate (:argv self)))
+    (->> (:argv self)
+         (partition 2 1)
+         (map constructor)
+         (apply conjunction)
+         protocols/translate)))
 
 (defn fetch [mzn]
   (let [temp-file (doto (java.io.File/createTempFile "petrushka" ".mzn") .deleteOnExit)
@@ -571,85 +420,6 @@
        all?
        mzn
        (partial detranspile merged-decisions)))))
-
-(defn dithered? [x]
-  (boolean (protocols/decisions x)))
-
-(tests
- (dithered? (?> (+ (fresh) 1))) := true
- (dithered? (?> (+ 1 1))) := false
- )
-
-(comment
-  (hyperfiddle.rcf/enable!)
-  (dithered? (?> (+ 1 (fresh))))
-  
-  (protocols/decisions #{(fresh)})
-  supers
-  clojure.set/superset?
-  ; *, +, !, -, _, '?, <, > and =
-
-
-  (let [a (fresh)]
-    (protocols/bindings (?> (+ 3 
-                     (bind (range 12) a)
-                     (bind (range 15) a)))))
-  
-  (maximum)
-  (to-array [i f])
-
-  (def ?> 123)
-  (def ?= "abc")
-
-  (defn cluster-free []
-    (expression (+)))
-
-  (def a (bind (range 10) (fresh)))
-  (def b (fresh))
-
-  (def ?= expression)
-  
-  number?
-
-  (forall [x (fresh)]
-          (not= (contains? a)))
-
-  (exists [item set]
-          (not= fffff fff))
-
-
-  (forall [x (fresh)])
-
-  (expression (let [a (fresh)
-                    b (expression (+ a 2))]
-                (expression (* b 3))))
-
-  (expression
-   (let [a (fresh)
-         b (expression (+ a 2))]
-     (expression (+ b 3))))
-
-  (clojure.set/intersection)
-
-  (sum [item set]
-       (+ 1 2 3))
-
-
-  (for [a b
-        :where [(a > 3)]]
-    (not=
-     (contains? b (+ a 1))
-     (contains? b (+ a 2))))
-
-  (map cluster-free? (domain (fresh) (range 0 12)))
-
-  (solve (expression (= 10 (apply + [1 2 3 4 5 (fresh)]))))
-  (solve (expression
-          (= (clojure.set/intersection (fresh) #{1 2 3 4 5 6 7 8})
-             #{1 2 3 4 5 6})))
-
-  2
-  )
 
 
 #_(extend-protocol protocols/IExpress
