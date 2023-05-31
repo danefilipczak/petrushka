@@ -48,7 +48,16 @@
   protocols/IExpress
   (write [_self] (apply list '= (map protocols/write argv)))
   (codomain [self] {types/Bool self})
-  (domainv [self] (repeat (zipmap types/all-decision-types (repeat self))))
+  (domainv [self] (take
+                   (count argv)
+                   (repeat
+                    (zipmap
+                     (->> argv
+                          (map protocols/codomain)
+                          (sort-by count)
+                          first
+                          keys)
+                     (repeat self)))))
   (decisions [self] (api/unify-argv-decisions self))
   (bindings [self] (api/unify-argv-bindings self))
   (validate [self]

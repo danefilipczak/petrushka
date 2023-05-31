@@ -217,6 +217,23 @@
   (translate [self] (throw (ex-info "unsupported type" {:self self})))
   (bindings [self] nil))
 
+(extend-protocol protocols/IExpress
+  nil
+  (write [self] self)
+  (decisions [self] self)
+  (bindings [self] self)
+  (validate [self] self)
+  (codomain [self] self)
+  (translate [self] (throw (ex-info "unsupported type" {:self self}))))
+
+(extend-protocol protocols/IExpress
+  clojure.lang.IPersistentVector
+  (write [self] (mapv protocols/write self))
+  (validate [self] (mapv protocols/validate self))
+  (decisions [self] (->> self
+                     (map protocols/decisions)
+                     (apply merge-with-key intersect-domains))))
+
 #_(extend-protocol protocols/IExpress
  nil
   (write [self] self)
@@ -285,20 +302,25 @@
 
 (def macro-sym? (partial fn-inspect (comp boolean :macro meta)))
 (def function-sym? (partial fn-inspect (comp not :macro meta)))
+(def introduced? (partial fn-inspect (comp :introduced meta)))
 
 (defmacro expression [form]
   (clojure.walk/postwalk
    (fn [f]
      (cond
-       (and (list? f) (macro-sym? (first f)))
-       (let [ast-constructor-fn (protocols/rewrite-macro (symbols/fully-qualify-symbol (first f)))]
-         (if (not= (first f) ast-constructor-fn)
-           `(if (some protocols/decisions ~(vec (rest f)))
-              (protocols/validate (~ast-constructor-fn ~(vec (rest f))))
-              ~f)
-           f))
+       (and (list? f) 
+            (macro-sym? (first f)))
+       (if (introduced? (first f))
+         f
+         (let [ast-constructor-fn (protocols/rewrite-macro (symbols/fully-qualify-symbol (first f)))]
+           (if (not= (first f) ast-constructor-fn)
+             `(if (some protocols/decisions ~(vec (rest f)))
+                (protocols/validate (~ast-constructor-fn ~(vec (rest f))))
+                ~f)
+             f)))
 
        (function-sym? f) `(rewrite-fn ~f)
+
        :else f))
    form))
 

@@ -2,10 +2,13 @@
   (:require [petrushka.api :as api]
             [hyperfiddle.rcf :refer [tests]]
             [petrushka.utils.test :as utils.test]
+            [petrushka.utils.symbol :as symbols]
             [petrushka.protocols :as protocols]
             [petrushka.utils.string :refer [>>]]
             ;; for defmethods
-            [petrushka.terms.core]))
+            [petrushka.terms.core]
+            [petrushka.terms.set]
+            [petrushka.terms.introduced :as terms.introduced]))
 
 (defn fresh
   "Mint a fresh decision."
@@ -68,7 +71,7 @@
           (utils.test/throws? (maximize (+ a 12) (contains? #{} a)))
           := false)))
 
-(defmacro ?> 
+(defmacro ^:introduced ?> 
   "The dither operator.
    dith·er - noun: to be indecisive."
   [form]
@@ -76,6 +79,12 @@
 
 (defn conjunction [& args]
   (apply api/conjunction args))
+
+(defmacro ^:introduced forall [[bind set-expr] constraint-expr]
+  `(let [~bind (fresh)]
+     (?> (terms.introduced/forall 
+          '~bind  
+          [~bind ~set-expr ~constraint-expr]))))
 
 (defn dithered? [x]
   (boolean (protocols/decisions x)))
