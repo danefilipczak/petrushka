@@ -32,6 +32,25 @@
   [_]
   ->TermAnd)
 
+(defrecord TermWhen [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'when (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] (take 2 (repeat {types/Bool self})))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (apply 
+                     api/translate-binary-operation 
+                     "->" 
+                     (map protocols/translate (:argv self)))))
+
+(defmethod 
+  protocols/rewrite-macro 
+  (symbols/fully-qualify-symbol 'when)
+  [_]
+  ->TermWhen)
+
 (defrecord TermGreaterThanOrEqualTo [argv]
   protocols/IExpress
   (write [_self] (apply list '>= (map protocols/write argv)))
