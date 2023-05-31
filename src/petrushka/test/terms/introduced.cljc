@@ -33,11 +33,20 @@
                (= 5 (mod a 12))))]
     (get res x)) := #{65 77 41 89 29 17 5 53}
 
-       ;; todo when when and not are implemented
-  #_(let [cluster-free (fn [set-decision]
-                         (main/?> (main/forall [a (api/bind (range 12) set-decision)]
-                                    (when (contains? set-decision (mod (+ a 1) 12))
-                                      (not (contains? set-decision (mod (+ a 2) 12)))))))
-          x (main/fresh)
-          res (main/satisfy (cluster-free x))]
-      (get res x)))
+  (let [cluster-free (fn [set-decision]
+                       (main/?>
+                        (main/forall [a (api/bind (range 12) set-decision)]
+                          (when (contains? set-decision (mod (+ a 1) 12))
+                            (not (contains? set-decision (mod (+ a 2) 12)))))))
+        x (main/fresh)
+        res (main/satisfy
+             (cluster-free x))
+        validate (fn [s]
+                   (every?
+                    true?
+                    (for [e s]
+                      (if (contains? s (mod (+ e 1) 12))
+                        (not (contains? s (mod (+ e 2) 12)))
+                        true))))]
+    (validate (get res x)))
+  := true)
