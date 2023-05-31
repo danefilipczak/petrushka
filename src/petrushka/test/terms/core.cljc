@@ -35,4 +35,14 @@
              a))
     := true))
 
+(tests "not"
+  (let [a (fresh)]
+    (not=
+     1
+     (get
+      (satisfy (when (not true)
+                 (= a 1)))
+      a))
+    := true))
+
 

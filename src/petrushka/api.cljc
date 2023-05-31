@@ -182,10 +182,10 @@
                          (apply str (interpose "," (map protocols/translate self)))} 
                         "{{{elements}}}")))
 
-(spec/def ::domain (spec/map-of types/all-decision-types #(boolean (protocols/write %))))
+(spec/def ::domain (spec/map-of types/all-decision-types #(some? (protocols/write %))))
 (spec/def ::domainv (spec/coll-of ::domain))
 (spec/def ::decisions (spec/nilable (spec/map-of decision? ::domain)))
-(spec/def ::binding (spec/tuple (every-pred set? sorted?) #(boolean (protocols/write %))))
+(spec/def ::binding (spec/tuple (every-pred set? sorted?) #(some? (protocols/write %))))
 (spec/def ::bindings (spec/nilable (spec/map-of decision? ::binding)))
 
 (extend-protocol protocols/IExpress

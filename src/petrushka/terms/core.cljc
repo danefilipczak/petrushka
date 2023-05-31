@@ -2,6 +2,7 @@
   (:require [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.utils.symbol :as symbols]
+            [petrushka.utils.string :refer [>>]]
             [petrushka.api :as api]))
 
 (defrecord TermPlus [argv]
@@ -62,6 +63,18 @@
   (translate [self] (api/translate-comparator self ">=" ->TermGreaterThanOrEqualTo)))
 
 (defmethod protocols/rewrite* >= [_] ->TermGreaterThanOrEqualTo)
+
+(defrecord TermNot [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'not (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Bool self}])
+  (decisions [_self] (protocols/decisions (first argv)))
+  (bindings [_self] (protocols/bindings (first argv)))
+  (validate [self] (api/validate-domains self))
+  (translate [_self] (>> {:arg (protocols/translate (first argv))} "(not {{arg}})")))
+
+(defmethod protocols/rewrite* not [_] ->TermNot)
 
 (defrecord TermEquals [argv]
   protocols/IExpress
