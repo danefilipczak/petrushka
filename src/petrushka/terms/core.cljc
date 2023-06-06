@@ -3,7 +3,8 @@
             [petrushka.types :as types]
             [petrushka.utils.symbol :as symbols]
             [petrushka.utils.string :refer [>>]]
-            [petrushka.api :as api]))
+            [petrushka.api :as api]
+            [clojure.spec.alpha :as s]))
 
 (defrecord TermPlus [argv]
   protocols/IExpress
@@ -101,6 +102,69 @@
   (translate [self] (api/translate-comparator self "=" ->TermEquals)))
 
 (defmethod protocols/rewrite* = [_] ->TermEquals)
+
+(defn condititonal-return-exprs [self]
+  (->> (:argv self)
+       (partition-all 2)
+       (map (fn [test-expr-pair]
+              (case (count test-expr-pair)
+                2 (last test-expr-pair)
+                1 (first test-expr-pair))))))
+
+(defn conditional-codomain [self]
+  {:post [(s/valid? ::api/domain %)]}
+  (zipmap (->> (condititonal-return-exprs self)
+               (map protocols/codomain)
+               (sort-by count)
+               first
+               keys)
+          (repeat self)))
+
+(defn conditional-domainv [self]
+  (let [return-domain (conditional-codomain self)]
+    (->> (:argv self)
+         (partition-all 2)
+         (mapcat (fn [test-expr-pair]
+                   (case (count test-expr-pair)
+                     2 [{types/Bool self} return-domain]
+                     1 [return-domain]))))))
+
+(defn translate-conditional [self]
+  (apply
+   str
+   (concat
+    ["("]
+    (->> (:argv self)
+         (partition-all 2)
+         (interleave (range))
+         (partition 2)
+         (mapcat (fn [[i [test-or-expr expr :as test-expr-pair]]]
+                   (case (count test-expr-pair)
+                     2 [(if (zero? i) "if " " elseif ")
+                        (protocols/translate test-or-expr) 
+                        " then " 
+                        (protocols/translate expr)]
+                     1 [" else " (protocols/translate test-or-expr)]))))
+    [" endif)"])))
+
+(defrecord TermIf [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'if (map protocols/write argv)))
+  (codomain [self] (conditional-codomain self))
+  (domainv [self] (conditional-domainv self))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self]
+            (when (empty? (->> (condititonal-return-exprs self)
+                               (map (comp set keys protocols/codomain))
+                               (apply clojure.set/intersection)))
+              (throw (ex-info "if requires consistent types in its return expressions" {})))
+            (api/validate-domains self))
+  (translate [self] (translate-conditional self)))
+
+(defmethod protocols/rewrite-symbol 'if [_]
+  (fn if-constructor [& args]
+    (->TermIf (vec args))))
 
 (defrecord TermContains [argv]
   protocols/IExpress

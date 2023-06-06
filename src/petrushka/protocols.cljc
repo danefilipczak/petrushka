@@ -19,3 +19,7 @@
     sym))
 
 (defmethod rewrite-macro :default [x] x)
+
+(defmulti rewrite-symbol identity)
+
+(defmethod rewrite-symbol :default [x] x)

@@ -10,6 +10,10 @@
             [petrushka.terms.set]
             [petrushka.terms.introduced :as terms.introduced]))
 
+(comment
+  (hyperfiddle.rcf/enable!)
+  )
+
 (defn fresh
   "Mint a fresh decision."
   ([]

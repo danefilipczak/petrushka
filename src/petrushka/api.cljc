@@ -308,7 +308,9 @@
   (clojure.walk/postwalk
    (fn [f]
      (cond
-       (and (list? f) 
+       
+       ;; macros
+       (and (list? f)
             (macro-sym? (first f)))
        (if (introduced? (first f))
          f
@@ -319,7 +321,18 @@
                 ~f)
              f)))
 
+       ;; functions
        (function-sym? f) `(rewrite-fn ~f)
+
+       ;; special forms
+       (and (list? f)
+            (symbol? (first f)))
+       (let [ast-constructor-fn (protocols/rewrite-symbol (first f))]
+           (if (not= (first f) ast-constructor-fn)
+             `(if (some protocols/decisions ~(vec (rest f)))
+                (protocols/validate (~ast-constructor-fn ~@(rest f)))
+                ~f)
+             f))
 
        :else f))
    form))
@@ -352,7 +365,7 @@
         out))))
 
 (defn ->output [decisions]
-  (let [var-string (->> (for [decision (-> decisions keys sort)]
+  (let [var-string (->> (for [decision (sort-by :id (-> decisions keys))]
                           (>> {:x (protocols/translate decision)}
                               "\\\"\\({{x}})\\\""))
                         (interpose " ")
@@ -402,10 +415,10 @@
   (->> (string/split out-str #"\n")
        first
        read-string
-       (interleave (-> decisions keys sort))
+       (interleave (sort-by :id (-> decisions keys)))
        (partition 2)
        (map (partial detranspile* decisions))
-       (zipmap (-> decisions keys sort))))
+       (zipmap (sort-by :id (-> decisions keys)))))
 
 (defn solve [{:keys [all? async?] :as opts}
              constraint
