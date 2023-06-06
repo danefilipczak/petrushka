@@ -16,7 +16,7 @@
   (validate [self] (api/validate-domains self))
   (translate [self] (api/translate-nary-operation "+" (map protocols/translate (:argv self)))))
 
-(defmethod protocols/rewrite* + [_] ->TermPlus)
+(defmethod protocols/rewrite-function + [_] ->TermPlus)
 
 (defrecord TermAnd [argv]
   protocols/IExpress
@@ -63,7 +63,7 @@
   (validate [self] (api/validate-domains self))
   (translate [self] (api/translate-comparator self ">=" ->TermGreaterThanOrEqualTo)))
 
-(defmethod protocols/rewrite* >= [_] ->TermGreaterThanOrEqualTo)
+(defmethod protocols/rewrite-function >= [_] ->TermGreaterThanOrEqualTo)
 
 (defrecord TermNot [argv]
   protocols/IExpress
@@ -75,7 +75,7 @@
   (validate [self] (api/validate-domains self))
   (translate [_self] (>> {:arg (protocols/translate (first argv))} "(not {{arg}})")))
 
-(defmethod protocols/rewrite* not [_] ->TermNot)
+(defmethod protocols/rewrite-function not [_] ->TermNot)
 
 (defrecord TermEquals [argv]
   protocols/IExpress
@@ -101,7 +101,7 @@
     self)
   (translate [self] (api/translate-comparator self "=" ->TermEquals)))
 
-(defmethod protocols/rewrite* = [_] ->TermEquals)
+(defmethod protocols/rewrite-function = [_] ->TermEquals)
 
 (defn condititonal-return-exprs [self]
   (->> (:argv self)
@@ -179,7 +179,7 @@
                      (protocols/translate (second (:argv self)))
                      (protocols/translate (first (:argv self))))))
 
-(defmethod protocols/rewrite* contains? [_] ->TermContains)
+(defmethod protocols/rewrite-function contains? [_] ->TermContains)
 
 (defrecord TermModulo [argv]
   protocols/IExpress
@@ -191,4 +191,4 @@
   (validate [self] (api/validate-domains self))
   (translate [self] (apply api/translate-binary-operation "mod" (map protocols/translate argv))))
 
-(defmethod protocols/rewrite* mod [_] ->TermModulo)
+(defmethod protocols/rewrite-function mod [_] ->TermModulo)

@@ -9,9 +9,9 @@
   (validate [self])
   (bindings [self]))
 
-(defmulti rewrite* identity)
+(defmulti rewrite-function identity)
 
-(defmethod rewrite* :default [x] x)
+(defmethod rewrite-function :default [x] x)
 
 (defmulti rewrite-macro
   (fn [sym]

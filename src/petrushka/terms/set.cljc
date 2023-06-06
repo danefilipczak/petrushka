@@ -13,4 +13,4 @@
   (validate [self] (api/validate-domains self))
   (translate [self] (api/translate-nary-operation "intersect" (map protocols/translate (:argv self)))))
 
-(defmethod protocols/rewrite* clojure.set/intersection [_] ->TermIntersection)
+(defmethod protocols/rewrite-function clojure.set/intersection [_] ->TermIntersection)

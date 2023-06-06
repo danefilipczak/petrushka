@@ -283,7 +283,7 @@
        (apply merge-with-key (partial intersect-bindings e))))
 
 (defn rewrite-fn [form-fn]
-  (let [ast-constructor-fn (protocols/rewrite* form-fn)]
+  (let [ast-constructor-fn (protocols/rewrite-function form-fn)]
     (if (= form-fn ast-constructor-fn)
       form-fn
       (fn [& args]

@@ -34,7 +34,7 @@
 
 (defn forall [& args] :no-op)
 
-(defmethod protocols/rewrite* forall [_] 
+(defmethod protocols/rewrite-function forall [_] 
   (fn [[bind-sym argv]]
     (->TermForAll bind-sym argv)))
 
