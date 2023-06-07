@@ -77,6 +77,10 @@
 
 (defmethod protocols/rewrite-function not [_] ->TermNot)
 
+(defmethod protocols/rewrite-function not= [_] 
+  (fn [argv]
+    (api/expression (not (apply = argv)))))
+
 (defrecord TermEquals [argv]
   protocols/IExpress
   (write [_self] (apply list '= (map protocols/write argv)))

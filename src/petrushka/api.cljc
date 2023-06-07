@@ -390,7 +390,7 @@
                 (cond
                   (= type types/Set) (>>* "var set of {{range}}: {{decision}};")
                   (= type types/Numeric) (>>* "var int: {{decision}};")
-                  (= type types/Bool) (>>* "var types/Bool: {{decision}};")))))
+                  (= type types/Bool) (>>* "var bool: {{decision}};")))))
        sort))
 
 (defmulti detranspile*

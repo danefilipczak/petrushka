@@ -1,11 +1,44 @@
 (ns petrushka.test.terms.core
   (:require [hyperfiddle.rcf :refer [tests]]
+            [petrushka.api :as api]
             [petrushka.main :as main :refer [?> fresh satisfy]]
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.utils.test :refer [throws?]]))
 
 (def only-val (comp first vals))
+
+(tests 
+ ">="
+  (let [a (fresh)
+        b (fresh)]
+    20 :=
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (when (>= a 10)
+         (= b 20))))
+     b)
+
+    true :=
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (when (>= a 10)
+         (= b true))))
+     b)
+    
+    
+    true := 
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (= b (>= 21 a 20 19))))
+     b)
+    ))
 
 (tests 
  "+"
@@ -21,6 +54,14 @@
 
   (count (only-val (protocols/decisions (?> (= (fresh) (fresh))))))
   := (count types/all-decision-types))
+
+(tests "not="
+
+  (not= 1 (only-val (satisfy (not= (fresh) 1))))
+  := true
+
+  (not= #{} (only-val (satisfy (not= (api/bind (range 100) (fresh)) #{}))))
+  := true)
 
 (tests "when"
   (let [a (fresh)]
