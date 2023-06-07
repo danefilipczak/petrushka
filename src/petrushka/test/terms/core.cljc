@@ -84,4 +84,41 @@
          (= b (+ 5 (if (>= a 10) 5 6)))))
        b))))
 
+(tests "cond"
+  (tests "validates the test is boolean"
+    false := (throws? (?> (cond false (fresh) :else (fresh))))
+    true := (throws? (?> (cond (= 1 (fresh)) (fresh) (+ 2 3) 4 :else 2)))
+    )
+  
+  (tests "validates the return types are consistent"
+    true := (throws? (?> (cond (fresh) 1 (fresh) #{} :else #{})))
+    false := (throws? (?> (cond (fresh) #{1 2 3} :else #{})))
+    )
+  
+  (tests "evaluates"
+    (let [a (fresh)
+          b (fresh)]
+      0 :=
+      (get
+       (satisfy
+        (and
+         (= a 9)
+         (cond (>= a 10) (= b 1) (= a 9) (= b 0) :else false)))
+       b)
+
+      1 :=
+      (get
+       (satisfy
+        (and
+         (= a 11)
+         (cond (>= a 10) (= b 1) (= a 9) (= b 0) :else false)))
+       b)
+
+      10 :=
+      (get
+       (satisfy
+        (and
+         (= a 11)
+         (= b (+ 5 (cond (= a 1) 6 (>= a 10) 5 :else 0)))))
+       b))))
 

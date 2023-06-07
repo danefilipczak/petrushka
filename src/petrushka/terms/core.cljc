@@ -166,6 +166,33 @@
   (fn if-constructor [& args]
     (->TermIf (vec args))))
 
+(defrecord TermCond [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'cond (map protocols/write argv)))
+  (codomain [self] (conditional-codomain self))
+  (domainv [self] (conditional-domainv self))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self]
+            (when (empty? (->> (condititonal-return-exprs self)
+                               (map (comp set keys protocols/codomain))
+                               (apply clojure.set/intersection)))
+              (throw (ex-info "cond requires consistent types in its return expressions" {})))
+            (api/validate-domains self))
+  (translate [self] (translate-conditional self)))
+
+(defmethod 
+  protocols/rewrite-macro 
+  (symbols/fully-qualify-symbol 'cond)
+  [_]
+  (fn [argv]
+    (let [penultimate-term (get argv (- (count argv) 2))]
+      (when-not (contains? #{:else :default} penultimate-term)
+        (throw (ex-info "cond requires a default test/expression pair, expressed with :else or :default as the test" {})))
+      (->TermCond (-> (drop-last 2 argv)
+                      vec
+                      (conj (last argv)))))))
+
 (defrecord TermContains [argv]
   protocols/IExpress
   (write [_self] (apply list 'contains? (map protocols/write argv)))
