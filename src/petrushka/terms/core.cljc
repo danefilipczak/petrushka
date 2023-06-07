@@ -223,3 +223,15 @@
   (translate [self] (apply api/translate-binary-operation "mod" (map protocols/translate argv))))
 
 (defmethod protocols/rewrite-function mod [_] ->TermModulo)
+
+(defrecord TermCount [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'count (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] [{types/Set self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (>> {:set (protocols/translate (first (:argv self)))} "(card({{set}}))" )))
+
+(defmethod protocols/rewrite-function count [_] ->TermCount)

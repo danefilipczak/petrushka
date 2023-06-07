@@ -161,3 +161,10 @@
          (= b (+ 5 (cond (= a 1) 6 (>= a 10) 5 :else 0)))))
        b))))
 
+(tests "count"
+  1 :=
+  (count
+   (only-val
+    (satisfy
+     (= 1 (count (api/bind (range 10) (fresh))))))))
+
