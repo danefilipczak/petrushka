@@ -314,8 +314,9 @@
             (macro-sym? (first f)))
        (if (introduced? (first f))
          f
-         (let [ast-constructor-fn (protocols/rewrite-macro (symbols/fully-qualify-symbol (first f)))]
-           (if (not= (first f) ast-constructor-fn)
+         (let [qualified-symbol (symbols/fully-qualify-symbol (first f))
+               ast-constructor-fn (protocols/rewrite-macro qualified-symbol)]
+           (if (not= qualified-symbol ast-constructor-fn)
              `(if (some protocols/decisions ~(vec (rest f)))
                 (protocols/validate (~ast-constructor-fn ~(vec (rest f))))
                 ~f)
