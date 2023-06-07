@@ -22,3 +22,5 @@
     ~body
     false
     (catch e# true)))
+
+(def only-val (comp first vals))

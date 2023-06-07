@@ -4,9 +4,7 @@
             [petrushka.main :as main :refer [?> fresh satisfy]]
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
-            [petrushka.utils.test :refer [throws?]]))
-
-(def only-val (comp first vals))
+            [petrushka.utils.test :refer [throws? only-val]]))
 
 (tests 
  ">="
