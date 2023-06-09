@@ -1,4 +1,4 @@
-(ns petrushka.test.terms.core
+(ns petrushka.terms.core-test
   (:require [hyperfiddle.rcf :refer [tests]]
             [petrushka.api :as api]
             [petrushka.main :as main :refer [?> fresh satisfy]]

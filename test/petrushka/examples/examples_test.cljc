@@ -1,4 +1,4 @@
-(ns petrushka.test.examples.examples
+(ns petrushka.examples.examples-test
   (:require [hyperfiddle.rcf :refer [tests]]
             [petrushka.main :as main :refer [?> fresh satisfy]]
             [petrushka.protocols :as protocols]

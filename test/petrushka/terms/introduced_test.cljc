@@ -1,4 +1,4 @@
-(ns petrushka.test.terms.introduced
+(ns petrushka.terms.introduced-test
   (:require [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.api :as api]
