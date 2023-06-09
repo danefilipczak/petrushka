@@ -9,7 +9,11 @@
             [petrushka.types :as types]
             [petrushka.utils.string :refer [>>]]
             [petrushka.utils.symbol :as symbols]
-            [petrushka.utils.test :as utils.test]))
+            [petrushka.utils.test :as utils.test]
+            ))
+
+(declare cacheing-validate)
+(declare cacheing-decisions)
 
 (def ^:dynamic *debug* false)
 
@@ -89,8 +93,8 @@
   protocols/IExpress
   (write [self] (list 'bind set (protocols/write decision)))
   (codomain [self] (protocols/codomain decision))
-  (decisions [self] (protocols/decisions decision))
-  (validate [_self] (protocols/validate decision))
+  (decisions [self] (cacheing-decisions decision))
+  (validate [_self] (cacheing-validate decision))
   (translate [_self] (protocols/translate decision))
   (bindings [self] {decision [set self]}))
 
@@ -172,12 +176,12 @@
   (write [self] (set (map protocols/write self)))
   (codomain [self] {types/Set self})
   (decisions [self] (->> self
-                     (map protocols/decisions)
+                     (map cacheing-decisions)
                      (apply merge-with-key intersect-domains)))
   (bindings [self] (->> self
                      (map protocols/bindings)
                      (apply merge-with-key (partial intersect-bindings self))))
-  (validate [self] (doall (map protocols/validate self)) self)
+  (validate [self] (doall (map cacheing-validate self)) self)
   (translate  [self] (>> {:elements 
                          (apply str (interpose "," (map protocols/translate self)))} 
                         "{{{elements}}}")))
@@ -229,9 +233,9 @@
 (extend-protocol protocols/IExpress
   clojure.lang.IPersistentVector
   (write [self] (mapv protocols/write self))
-  (validate [self] (mapv protocols/validate self))
+  (validate [self] (mapv cacheing-validate self))
   (decisions [self] (->> self
-                     (map protocols/decisions)
+                     (map cacheing-decisions)
                      (apply merge-with-key intersect-domains))))
 
 #_(extend-protocol protocols/IExpress
@@ -249,21 +253,21 @@
               (if (decidable? arg)
                 (merge-with-key
                  intersect-domains
-                 (protocols/decisions arg)
+                 (cacheing-decisions arg)
                  {(decidable->decision arg) domain})
-                (protocols/decisions arg)))
+                (cacheing-decisions arg)))
             (protocols/domainv expression))
        (apply merge-with-key intersect-domains)))
 
 (defn validate-domains [expression]
   (doall
    (->> (:argv expression)
-        (map protocols/validate)
+        (map cacheing-validate)
         (map
          (fn [domain arg]
            (intersect-domains arg (protocols/codomain arg) domain))
          (protocols/domainv expression))))
-  (protocols/decisions expression)
+  (cacheing-decisions expression)
   expression)
 
 (defn translate-binary-operation [op-string left right]
@@ -287,8 +291,8 @@
     (if (= form-fn ast-constructor-fn)
       form-fn
       (fn [& args]
-        (if (some protocols/decisions args)
-          (protocols/validate (ast-constructor-fn args))
+        (if (some cacheing-decisions args)
+          (cacheing-validate (ast-constructor-fn args))
           (apply form-fn args))))))
 
 (defn fn-inspect
@@ -317,8 +321,8 @@
          (let [qualified-symbol (symbols/fully-qualify-symbol (first f))
                ast-constructor-fn (protocols/rewrite-macro qualified-symbol)]
            (if (not= qualified-symbol ast-constructor-fn)
-             `(if (some protocols/decisions ~(vec (rest f)))
-                (protocols/validate (~ast-constructor-fn ~(vec (rest f))))
+             `(if (some cacheing-decisions ~(vec (rest f)))
+                (cacheing-validate (~ast-constructor-fn ~(vec (rest f))))
                 ~f)
              f)))
 
@@ -330,8 +334,8 @@
             (symbol? (first f)))
        (let [ast-constructor-fn (protocols/rewrite-symbol (first f))]
            (if (not= (first f) ast-constructor-fn)
-             `(if (some protocols/decisions ~(vec (rest f)))
-                (protocols/validate (~ast-constructor-fn ~@(rest f)))
+             `(if (some cacheing-decisions ~(vec (rest f)))
+                (cacheing-validate (~ast-constructor-fn ~@(rest f)))
                 ~f)
              f))
 
@@ -435,8 +439,8 @@
                         "solve satisfy;")
         merged-decisions (merge-with-key
                           intersect-domains
-                          (protocols/decisions constraint)
-                          (when objective (protocols/decisions objective)))
+                          (cacheing-decisions constraint)
+                          (when objective (cacheing-decisions objective)))
         var-declarations-str (decisions->var-declarations
                               merged-decisions
                               (merge-with-key
@@ -462,6 +466,9 @@
  clojure.lang.Sequential
   (write [self] (apply list 'list (map protocols/write self)))
   (codomain [self] {Sequential self})
-  (decisions [self] (->> (map protocols/decisions self)
+  (decisions [self] (->> (map cacheing-decisions self)
                      (apply merge-with-key intersect-domains)))
   (validate [self] (map protocols/validate self)))
+
+(def cacheing-validate (memoize protocols/validate))
+(def cacheing-decisions (memoize protocols/decisions))

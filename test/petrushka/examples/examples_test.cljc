@@ -1,7 +1,7 @@
 (ns petrushka.examples.examples-test
   (:require [hyperfiddle.rcf :refer [tests]]
-            [petrushka.main :as main :refer [?> fresh satisfy]]
             [petrushka.protocols :as protocols]
+            [petrushka.main :as main :refer [?> fresh satisfy]]
             [petrushka.types :as types]
             [petrushka.utils.test :refer [throws?]]
             [petrushka.api :as api]))

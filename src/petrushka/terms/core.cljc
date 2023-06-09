@@ -70,7 +70,7 @@
   (write [_self] (apply list 'not (map protocols/write argv)))
   (codomain [self] {types/Bool self})
   (domainv [self] [{types/Bool self}])
-  (decisions [_self] (protocols/decisions (first argv)))
+  (decisions [_self] (api/cacheing-decisions (first argv)))
   (bindings [_self] (protocols/bindings (first argv)))
   (validate [self] (api/validate-domains self))
   (translate [_self] (>> {:arg (protocols/translate (first argv))} "(not {{arg}})")))

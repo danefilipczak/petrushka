@@ -96,7 +96,7 @@
           [~bind ~set-expr ~constraint-expr]))))
 
 (defn dithered? [x]
-  (boolean (protocols/decisions x)))
+  (boolean (api/cacheing-decisions x)))
 
 (tests
  (protocols/decisions 1)
