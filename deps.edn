@@ -1,4 +1,12 @@
 {:deps {failjure/failjure {:mvn/version "2.2.0"}
         minizinc/clojure2minizinc {:mvn/version "0.2.0"}
         com.hyperfiddle/rcf {:mvn/version "20220926-202227"}
-        org.clojure/core.async {:mvn/version "1.6.673"}}}
+        org.clojure/core.async {:mvn/version "1.6.673"}}
+ :aliases {:test {:jvm-opts    ["-XX:-OmitStackTraceInFastThrow"
+                                "-Dhyperfiddle.rcf.generate-tests=true"]
+                  :extra-paths ["test"]
+                  :extra-deps  {io.github.cognitect-labs/test-runner
+                                {:git/url "https://github.com/cognitect-labs/test-runner.git"
+                                 :sha     "cc75980b43011773162b485f46f939dc5fba91e4"}}
+                  :exec-fn     cognitect.test-runner.api/test}}
+ }

@@ -82,7 +82,12 @@
   `(api/expression ~form))
 
 (defn conjunction [& args]
-  (apply api/conjunction args))
+  (if (seq (rest args))
+    (?> 
+     (and 
+      (first args) 
+      (apply conjunction (rest args))))
+    (first args)))
 
 (defmacro ^:introduced forall [[bind set-expr] constraint-expr]
   `(let [~bind (fresh)]
