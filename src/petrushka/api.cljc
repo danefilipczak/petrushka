@@ -101,7 +101,7 @@
 (def decision? (partial instance? Decision))
 (def binding? (partial instance? Binding))
 (def decidable? (some-fn decision? binding?))
-
+ 
 (defn decidable->decision [x]
   {:pre [(decidable? x)]
    :post [(decision? %)]}
@@ -110,6 +110,9 @@
     x))
 
 (defn bind [set decision]
+  "Constrains a decision, presumably a set decision, to be a subset of set.
+   Referentially transparent - evaluates to the decision.
+   No-op when used with decisions of other types."
   {:pre [(decision? decision)]}
   (->Binding (apply sorted-set set) decision))
 

@@ -98,6 +98,8 @@
 (defn dithered? [x]
   (boolean (api/cacheing-decisions x)))
 
+(def bind api/bind)
+
 (tests
  (protocols/decisions 1)
  (dithered? (?> (+ (fresh) 1))) := true

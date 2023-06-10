@@ -1,7 +1,6 @@
 (ns petrushka.terms.core-test
   (:require [hyperfiddle.rcf :refer [tests]]
-            [petrushka.api :as api]
-            [petrushka.main :as main :refer [?> fresh satisfy]]
+            [petrushka.main :as main :refer [bind ?> fresh satisfy]]
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.utils.test :refer [throws? only-val]]))
@@ -58,7 +57,7 @@
   (not= 1 (only-val (satisfy (not= (fresh) 1))))
   := true
 
-  (not= #{} (only-val (satisfy (not= (api/bind (range 100) (fresh)) #{}))))
+  (not= #{} (only-val (satisfy (not= (bind (range 100) (fresh)) #{}))))
   := true)
 
 (tests "when"
@@ -166,5 +165,5 @@
   (count
    (only-val
     (satisfy
-     (= 1 (count (api/bind (range 10) (fresh))))))))
+     (= 1 (count (bind (range 10) (fresh))))))))
 

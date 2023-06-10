@@ -1,7 +1,7 @@
 (ns petrushka.examples.examples-test
   (:require [hyperfiddle.rcf :refer [tests]]
             [petrushka.protocols :as protocols]
-            [petrushka.main :as main :refer [?> fresh satisfy]]
+            [petrushka.main :as main :refer [bind ?> fresh satisfy]]
             [petrushka.types :as types]
             [petrushka.utils.test :refer [throws?]]
             [petrushka.api :as api]))
@@ -10,7 +10,7 @@
   (let [mesos (take 5 (repeatedly fresh))
         cluster-free (fn [set-decision]
                        (?>
-                        (main/forall [a (api/bind (range 12) set-decision)]
+                        (main/forall [a (bind (range 12) set-decision)]
                           (when (contains? set-decision (mod (+ a 1) 12))
                             (not (contains? set-decision (mod (+ a 2) 12)))))))
         constraint (?>
