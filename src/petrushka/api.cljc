@@ -311,7 +311,7 @@
 (def function-sym? (partial fn-inspect (comp not :macro meta)))
 (def introduced? (partial fn-inspect (comp :introduced meta)))
 
-(defmacro expression [form]
+(defmacro dither [form]
   (clojure.walk/postwalk
    (fn [f]
      (cond
@@ -347,7 +347,7 @@
 
 (defn conjunction [& args]
   (if (seq (rest args))
-    (expression 
+    (dither 
      (and 
       (first args) 
       (apply conjunction (rest args))))

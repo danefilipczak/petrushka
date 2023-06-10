@@ -79,7 +79,7 @@
 
 (defmethod protocols/rewrite-function not= [_] 
   (fn [argv]
-    (api/expression (not (apply = argv)))))
+    (api/dither (not (apply = argv)))))
 
 (defrecord TermEquals [argv]
   protocols/IExpress

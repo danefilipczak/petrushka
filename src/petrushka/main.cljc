@@ -33,7 +33,7 @@
   ([term opts]
    `(api/solve
      ~opts
-     (api/expression ~term)
+     (api/dither ~term)
      nil)))
 
 (tests "satisfy"
@@ -48,8 +48,8 @@
   ([objective constraint opts]
    `(api/solve
      ~opts
-     (api/expression ~constraint)
-     (api/expression ~objective))))
+     (api/dither ~constraint)
+     (api/dither ~objective))))
 
 (tests "maximize"
  (-> (let [a (fresh)]
@@ -79,7 +79,7 @@
   "The dither operator.
    dith·er - noun: to be indecisive."
   [form]
-  `(api/expression ~form))
+  `(api/dither ~form))
 
 (defn conjunction [& args]
   (if (seq (rest args))
