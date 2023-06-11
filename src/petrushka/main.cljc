@@ -77,17 +77,21 @@
 
 (defmacro ^:introduced ?> 
   "The dither operator.
-   dith·er - noun: to be indecisive."
+   dith·er - verb: to be indecisive."
   [form]
   `(api/dither ~form))
 
 (defn conjunction [& args]
-  (if (seq (rest args))
-    (?> 
-     (and 
-      (first args) 
-      (apply conjunction (rest args))))
-    (first args)))
+  (loop [expr (first args)
+         more (rest args)]
+    (if (seq more)
+      (recur
+       (?> 
+        (and expr (first more)))
+       (rest more))
+      expr))
+  #_(apply api/conjunction args) ;; todo - though their implementations are the same, calling the impl function makes some tests fail. why?
+  )
 
 (defmacro ^:introduced forall [[bind set-expr] constraint-expr]
   `(let [~bind (fresh)]

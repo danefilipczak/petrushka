@@ -38,6 +38,139 @@
     ))
 
 (tests 
+ "<="
+  (let [a (fresh)
+        b (fresh)]
+    20 :=
+    (get
+     (satisfy
+      (and
+       (= a 30)
+       (when (<= a 30)
+         (= b 20))))
+     b)
+
+    true :=
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (when (<= a 21)
+         (= b true))))
+     b)
+    
+    
+    true := 
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (= b (<= 19 a 20 21))))
+     b)
+    ))
+
+(tests 
+ ">"
+  (let [a (fresh)
+        b (fresh)]
+    20 :=
+    (get
+     (satisfy
+      (and
+       (= a 31)
+       (when (> a 30)
+         (= b 20))))
+     b)
+
+    false :=
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (when (> a 21)
+         (= b true))))
+     b)
+    
+    
+    true := 
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (= b (> 21 a 19))))
+     b)
+    ))
+
+(tests 
+ "<"
+  (let [a (fresh)
+        b (fresh)]
+    20 :=
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (when (< a 30)
+         (= b 20))))
+     b)
+
+    true :=
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (when (< a 21)
+         (= b true))))
+     b)
+    
+    
+    true := 
+    (get
+     (satisfy
+      (and
+       (= a 20)
+       (= b (< 19 a 21))))
+     b)
+    ))
+
+
+(tests "zero?"
+  0 := (only-val (satisfy (zero? (fresh))))
+
+  42 := (let [a (fresh)
+              b (fresh)]
+          (->
+           (satisfy
+            (and (= 0 a)
+                 (when (zero? a)
+                   (= b 42))))
+           (get b))))
+
+(tests "pos?"
+  true := (pos? (only-val (satisfy (pos? (fresh)))))
+
+  42 := (let [a (fresh)
+              b (fresh)]
+          (->
+           (satisfy
+            (and (= -42 a)
+                 (when (not (pos? a))
+                   (= b 42))))
+           (get b))))
+
+(tests "neg?"
+  true := (neg? (only-val (satisfy (neg? (fresh)))))
+
+  42 := (let [a (fresh)
+              b (fresh)]
+          (->
+           (satisfy
+            (and (= 42 a)
+                 (when (not (neg? a))
+                   (= b 42))))
+           (get b))))
+
+(tests 
  "+"
  (only-val (satisfy (= (+ 1 (fresh)) 3))) := 2
  )
@@ -166,4 +299,20 @@
    (only-val
     (satisfy
      (= 1 (count (bind (range 10) (fresh))))))))
+
+(tests "mod and rem"
+  true :=
+  (some?
+   (let [n 5]
+     (->> (for [x (concat (range (- 0 n) 0) (range 1 (inc n)))
+                y (concat (range (- 0 n) 0) (range 1 (inc n)))
+                :let [a (fresh)
+                      b (fresh)]]
+            (?> (and
+                 (= a x)
+                 (= b y)
+                 (= (rem x y) (rem a b))
+                 (= (mod x y) (mod a b)))))
+          (apply main/conjunction)
+          satisfy))))
 

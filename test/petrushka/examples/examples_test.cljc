@@ -1,12 +1,12 @@
 (ns petrushka.examples.examples-test
   (:require [hyperfiddle.rcf :refer [tests]]
             [petrushka.protocols :as protocols]
-            [petrushka.main :as main :refer [bind ?> fresh satisfy]]
+            [petrushka.main :as main :refer [conjunction bind ?> fresh satisfy]]
             [petrushka.types :as types]
-            [petrushka.utils.test :refer [throws?]]
-            [petrushka.api :as api]))
+            [petrushka.utils.test :refer [throws?]]))
 
 (tests
+
   (let [mesos (take 5 (repeatedly fresh))
         cluster-free (fn [set-decision]
                        (?>
@@ -15,7 +15,7 @@
                             (not (contains? set-decision (mod (+ a 2) 12)))))))
         constraint (?>
                     (apply
-                     main/conjunction
+                     conjunction
                      (concat
                       (->> mesos
                            (partition 2 1)

@@ -34,6 +34,22 @@
   [_]
   ->TermAnd)
 
+(defrecord TermOr [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'or (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] (repeat {types/Bool self}))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-nary-operation "\\/" (map protocols/translate (:argv self)))))
+
+(defmethod 
+  protocols/rewrite-macro 
+  (symbols/fully-qualify-symbol 'or)
+  [_]
+  ->TermOr)
+
 (defrecord TermWhen [argv]
   protocols/IExpress
   (write [_self] (apply list 'when (map protocols/write argv)))
@@ -53,17 +69,53 @@
   [_]
   ->TermWhen)
 
+(defrecord TermGreaterThan [argv]
+  protocols/IExpress
+  (write [_self] (apply list '> (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] (take (count argv) (repeat {types/Numeric self})))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-comparator self ">" >)))
+
+(defmethod protocols/rewrite-function > [_] ->TermGreaterThan)
+
+(defrecord TermLessThan [argv]
+  protocols/IExpress
+  (write [_self] (apply list '< (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] (take (count argv) (repeat {types/Numeric self})))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-comparator self "<" <)))
+
+(defmethod protocols/rewrite-function < [_] ->TermLessThan)
+
 (defrecord TermGreaterThanOrEqualTo [argv]
   protocols/IExpress
   (write [_self] (apply list '>= (map protocols/write argv)))
   (codomain [self] {types/Bool self})
-  (domainv [self] (repeat {types/Numeric self}))
+  (domainv [self] (take (count argv) (repeat {types/Numeric self})))
   (decisions [self] (api/unify-argv-decisions self))
   (bindings [self] (api/unify-argv-bindings self))
   (validate [self] (api/validate-domains self))
-  (translate [self] (api/translate-comparator self ">=" ->TermGreaterThanOrEqualTo)))
+  (translate [self] (api/translate-comparator self ">=" >=)))
 
 (defmethod protocols/rewrite-function >= [_] ->TermGreaterThanOrEqualTo)
+
+(defrecord TermLessThanOrEqualTo [argv]
+  protocols/IExpress
+  (write [_self] (apply list '<= (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] (take (count argv) (repeat {types/Numeric self})))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-comparator self "<=" <=)))
+
+(defmethod protocols/rewrite-function <= [_] ->TermLessThanOrEqualTo)
 
 (defrecord TermNot [argv]
   protocols/IExpress
@@ -103,7 +155,7 @@
                        (apply clojure.set/intersection)))
       (throw (ex-info "equality testing requires consistent types" {})))
     self)
-  (translate [self] (api/translate-comparator self "=" ->TermEquals)))
+  (translate [self] (api/translate-comparator self "=" =)))
 
 (defmethod protocols/rewrite-function = [_] ->TermEquals)
 
@@ -212,7 +264,52 @@
 
 (defmethod protocols/rewrite-function contains? [_] ->TermContains)
 
-(defrecord TermModulo [argv]
+(defrecord TermPos? [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'pos? (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Numeric self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self]
+    (protocols/translate
+     (api/dither
+      (> (first argv) 0)))))
+
+(defmethod protocols/rewrite-function pos? [_] ->TermPos?)
+
+(defrecord TermNeg? [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'neg? (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Numeric self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self]
+    (protocols/translate
+     (api/dither
+      (< (first argv) 0)))))
+
+(defmethod protocols/rewrite-function neg? [_] ->TermNeg?)
+
+(defrecord TermZero? [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'zero? (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Numeric self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self]
+    (protocols/translate
+     (api/dither
+      (= (first argv) 0)))))
+
+(defmethod protocols/rewrite-function zero? [_] ->TermZero?)
+
+(defrecord TermMod [argv]
   protocols/IExpress
   (write [_self] (apply list 'mod (map protocols/write argv)))
   (codomain [self] {types/Numeric self})
@@ -220,9 +317,29 @@
   (decisions [self] (api/unify-argv-decisions self))
   (bindings [self] (api/unify-argv-bindings self))
   (validate [self] (api/validate-domains self))
+  (translate [self]
+    (protocols/translate
+     (api/dither
+      (let [n (first argv)
+            d (second argv)
+            m (api/dither (rem n d))]
+        (if (or (zero? m) (= (pos? n) (pos? d)))
+          m
+          (+ m d)))))))
+
+(defmethod protocols/rewrite-function mod [_] ->TermMod)
+
+(defrecord TermRem [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'rem (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] [{types/Numeric self} {types/Numeric self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
   (translate [self] (apply api/translate-binary-operation "mod" (map protocols/translate argv))))
 
-(defmethod protocols/rewrite-function mod [_] ->TermModulo)
+(defmethod protocols/rewrite-function rem [_] ->TermRem)
 
 (defrecord TermCount [argv]
   protocols/IExpress

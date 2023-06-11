@@ -345,21 +345,27 @@
        :else f))
    form))
 
-(defn conjunction [& args]
-  (if (seq (rest args))
-    (dither 
-     (and 
-      (first args) 
-      (apply conjunction (rest args))))
-    (first args)))
+(defn conjunction [& args]  
+  (loop [expr (first args)
+         more (rest args)]
+    (if (seq more)
+      (recur
+       (dither 
+        (and expr (first more)))
+       (rest more))
+      expr)))
 
-(defn translate-comparator [self op constructor]
+(defn translate-comparator [self op function]
   (case (count (:argv self))
     1 (protocols/translate true)
-    2 (apply translate-binary-operation op (map protocols/translate (:argv self)))
+    2 (apply 
+       translate-binary-operation 
+       op 
+       (map protocols/translate (:argv self)))
     (->> (:argv self)
          (partition 2 1)
-         (map constructor)
+         (map (fn [[a b]]
+                ((rewrite-fn function) a b)))
          (apply conjunction)
          protocols/translate)))
 
