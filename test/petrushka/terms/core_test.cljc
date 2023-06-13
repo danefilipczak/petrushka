@@ -316,3 +316,11 @@
           (apply main/conjunction)
           satisfy))))
 
+(tests "known issues"
+  (tests "symbols in let bindings are interpreted as functions to be rewritten, 
+          causing the following to fail macroexpansion."
+    #_(?>
+      (let [+ 1]
+        (- 1 +))))
+  )
+
