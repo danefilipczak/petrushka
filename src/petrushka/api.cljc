@@ -345,64 +345,77 @@
        :else f))
    form))
 
+(declare walk)
+
+(defn walk-let* [locals form]
+  (let [kvs (partition 2 (second form))
+        new-locals (into #{} (map first kvs))]
+    (apply
+     list
+     'let*
+     (into [] (mapcat (fn [[k v]] [k (walk locals v)]) kvs))
+     (map
+      (partial walk (clojure.set/intersection locals new-locals)) ;; merging with present locals
+      (drop 2 form)))))
+
 (defn walk
-  [form]
-  (cond
+  [locals form]
+  (let [walk* (partial walk locals)]
+    (cond
     ;; functions
-    (function-sym? form) `(rewrite-fn ~form)
+      (contains? locals form) form
+      (function-sym? form) `(rewrite-fn ~form)
 
     ;; macros
-    (and (list? form)
-         (macro-sym? (first form)))
-    (if (introduced? (first form))
-      (apply list (map walk form))
-      (let [qualified-symbol (symbols/fully-qualify-symbol (first form))
-            ast-constructor-fn (protocols/rewrite-macro qualified-symbol)]
-        (if (not= qualified-symbol ast-constructor-fn)
-          `(if (some cacheing-decisions ~(vec (map walk (rest form))))
-             (cacheing-validate (~ast-constructor-fn ~(vec (map walk (rest form)))))
-             ~(apply list (map walk form)))
-          (walk (apply list (macroexpand-1 form))))))
-    
-    ;; reader forms
-    (and (list? form) (= 'let* (first form)))
-    (do #_(println form)
-        ;; here we will need to keep track of the local symbols and pass them along so they are not overwritten latter
-        (apply list (map walk form)))
+      (and (list? form)
+           (macro-sym? (first form)))
+      (if (or (introduced? (first form))
+              (contains? locals (first form)))
+        (apply list (map walk* form))
+        (let [qualified-symbol (symbols/fully-qualify-symbol (first form))
+              ast-constructor-fn (protocols/rewrite-macro qualified-symbol)]
+          (if (not= qualified-symbol ast-constructor-fn)
+            `(if (some cacheing-decisions ~(vec (map walk* (rest form))))
+               (cacheing-validate (~ast-constructor-fn ~(vec (map walk* (rest form)))))
+               ~(apply list (map walk* form)))
+            (walk* (apply list (macroexpand-1 form))))))
 
     ;; special forms
-    (and (list? form)
-         (symbol? (first form)))
-    (let [ast-constructor-fn (protocols/rewrite-symbol (first form))]
-      (if (not= (first form) ast-constructor-fn)
-        `(if (some cacheing-decisions ~(vec (map walk (rest form))))
-           (cacheing-validate (~ast-constructor-fn ~@(map walk (rest form))))
-           ~(apply list (map walk form)))
-        (apply list (map walk form))))
-    
+      (and (list? form)
+           (symbol? (first form))
+           (not (contains? locals (first form))))
+      (cond (= 'let* (first form))
+            (walk-let* locals form)
+
+            :else
+            (let [ast-constructor-fn (protocols/rewrite-symbol (first form))]
+              (if (not= (first form) ast-constructor-fn)
+                `(if (some cacheing-decisions ~(vec (map walk* (rest form))))
+                   (cacheing-validate (~ast-constructor-fn ~@(map walk* (rest form))))
+                   ~(apply list (map walk* form)))
+                (apply list (map walk* form)))))
+
     ;; recur 
 
-    (list? form) (apply list (map walk form))
+      (list? form) (apply list (map walk* form))
 
-    (instance? clojure.lang.IMapEntry form)
-    (clojure.lang.MapEntry/create (walk (key form)) (walk (val form)))
+      (instance? clojure.lang.IMapEntry form)
+      (clojure.lang.MapEntry/create (walk* (key form)) (walk* (val form)))
 
-    (seq? form)
-    (doall (map walk form))
+      (seq? form)
+      (doall (map walk* form))
 
-    (instance? clojure.lang.IRecord form)
-    (reduce (fn [r x] (conj r (walk x))) form form)
+      (instance? clojure.lang.IRecord form)
+      (reduce (fn [r x] (conj r (walk* x))) form form)
 
-    (coll? form)
-    (into (empty form) (map walk form))
+      (coll? form)
+      (into (empty form) (map walk* form))
 
-    :else (let [ex# (macroexpand-1 form)]
-            (if (identical? ex# form)
-              form
-              (walk ex#)))))
+      :else form)))
+
 
 (defmacro dither [form]
-  (walk form))
+  (walk #{} form))
 
 (defn conjunction [& args]  
   (loop [expr (first args)
