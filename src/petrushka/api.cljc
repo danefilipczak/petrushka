@@ -3,6 +3,7 @@
             [clojure.spec.alpha :as spec]
             [clojure.spec.alpha :as s]
             [clojure.string :as string]
+            [clojure.set]
             [hyperfiddle.rcf :refer [tests]]
             [petrushka.adapter :as adapter]
             [petrushka.protocols :as protocols]
@@ -354,9 +355,24 @@
      list
      'let*
      (into [] (mapcat (fn [[k v]] [k (walk locals v)]) kvs))
-     (map
-      (partial walk (clojure.set/intersection locals new-locals)) ;; merging with present locals
+     (walk 
+      (clojure.set/union locals new-locals)
       (drop 2 form)))))
+
+(defn walk-fn* [locals form]
+  (let [[invocation bodies] (split-with (complement sequential?) form)
+        bodies (if (vector? (first bodies))
+                 (list bodies) bodies)]
+    (apply
+     list
+     (concat
+      invocation
+      (for [[params content] bodies]
+        (list
+         params
+         (walk
+          (clojure.set/union locals (into #{} params))
+          content)))))))
 
 (defn walk
   [locals form]
@@ -386,6 +402,9 @@
            (not (contains? locals (first form))))
       (cond (= 'let* (first form))
             (walk-let* locals form)
+
+            (= 'fn* (first form))
+            (walk-fn* locals form)
 
             :else
             (let [ast-constructor-fn (protocols/rewrite-symbol (first form))]

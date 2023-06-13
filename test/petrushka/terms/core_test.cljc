@@ -318,8 +318,18 @@
 
 (tests "let"
   -1 :=
-  (tests "let bindings are respected - fns that would normally be rewritten can be bound as symbols in let bindings."
+  (tests "let bindings are respected - symbols that would normally be rewritten can be bound."
     (?>
      (let [+ (+ 1 1)]
        (- 1 +)))))
+
+(tests "fn"
+  (tests "fn bindings are respected - symbols that would normally be rewritten can be bound."
+    2 :=
+    (only-val
+     (satisfy
+      (?>
+       (let [plus (fn [> <]
+                    (+ > <))]
+         (= 3 (plus (fresh) 1))))))))
 
