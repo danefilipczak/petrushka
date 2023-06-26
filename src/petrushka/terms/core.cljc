@@ -4,7 +4,8 @@
             [petrushka.utils.symbol :as symbols]
             [petrushka.utils.string :refer [>>]]
             [petrushka.api :as api]
-            [clojure.spec.alpha :as s]))
+            [clojure.spec.alpha :as s]
+            [hyperfiddle.rcf :as rcf]))
 
 (defrecord TermPlus [argv]
   protocols/IExpress
@@ -17,6 +18,144 @@
   (translate [self] (api/translate-nary-operation "+" (map protocols/translate (:argv self)))))
 
 (defmethod protocols/rewrite-function + [_] ->TermPlus)
+
+(defrecord TermProduct [argv]
+  protocols/IExpress
+  (write [_self] (apply list '* (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] (repeat {types/Numeric self}))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-nary-operation "*" (map protocols/translate (:argv self)))))
+
+(defmethod protocols/rewrite-function * [_] ->TermProduct)
+
+(defrecord TermMinus [argv]
+  protocols/IExpress
+  (write [_self] (apply list '- (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] (repeat {types/Numeric self}))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-nary-operation "-" (map protocols/translate (:argv self)))))
+
+(defmethod protocols/rewrite-function - [_] ->TermMinus)
+
+(defrecord TermDivide [argv]
+  protocols/IExpress
+  (write [_self] (apply list '/ (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] (repeat {types/Numeric self}))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-nary-operation "div" (map protocols/translate (:argv self)))))
+
+(defmethod protocols/rewrite-function / [_] ->TermDivide)
+
+(defrecord TermInc [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'inc (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] [{types/Numeric self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (protocols/translate 
+                     (api/dither (+ (first argv) 1)))))
+
+(defmethod protocols/rewrite-function inc [_] ->TermInc)
+
+(defrecord TermDec [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'dec (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] [{types/Numeric self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (protocols/translate
+                     (api/dither (- (first argv) 1)))))
+
+(defmethod protocols/rewrite-function dec [_] ->TermDec)
+
+(defrecord TermEven? [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'even? (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Numeric self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (protocols/translate
+                     (api/dither (= (mod (first argv) 2) 0)))))
+
+(defmethod protocols/rewrite-function even? [_] ->TermEven?)
+
+(defrecord TermOdd? [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'odd? (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Numeric self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (protocols/translate
+                     (api/dither (= (mod (first argv) 2) 1)))))
+
+(defmethod protocols/rewrite-function odd? [_] ->TermOdd?)
+
+(defrecord TermMax [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'max (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] (take (count argv) (repeat {types/Numeric self})))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-nary-operation "max" (map protocols/translate (:argv self)))))
+
+(defmethod protocols/rewrite-function max [_] ->TermMax)
+
+(defrecord TermMin [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'max (map protocols/write argv)))
+  (codomain [self] {types/Numeric self})
+  (domainv [self] (take (count argv) (repeat {types/Numeric self})))
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (api/translate-nary-operation "min" (map protocols/translate (:argv self)))))
+
+(defmethod protocols/rewrite-function max [_] ->TermMin)
+
+(defrecord TermTrue? [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'true? (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Bool self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (protocols/translate
+                     (api/dither (= (first argv) true)))))
+
+(defmethod protocols/rewrite-function true? [_] ->TermTrue?)
+
+(defrecord TermFalse? [argv]
+  protocols/IExpress
+  (write [_self] (apply list 'false? (map protocols/write argv)))
+  (codomain [self] {types/Bool self})
+  (domainv [self] [{types/Bool self}])
+  (decisions [self] (api/unify-argv-decisions self))
+  (bindings [self] (api/unify-argv-bindings self))
+  (validate [self] (api/validate-domains self))
+  (translate [self] (protocols/translate
+                     (api/dither (= (first argv) false)))))
+
+(defmethod protocols/rewrite-function false? [_] ->TermFalse?)
 
 (defrecord TermAnd [argv]
   protocols/IExpress

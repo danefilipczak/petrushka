@@ -3,7 +3,9 @@
             [petrushka.main :as main :refer [bind ?> fresh satisfy]]
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
-            [petrushka.utils.test :refer [throws? only-val]]))
+            [petrushka.utils.test :refer [throws? only-val]]
+            [hyperfiddle.rcf :as rcf]
+            [petrushka.api :as api]))
 
 (tests 
  ">="
@@ -175,6 +177,59 @@
  (only-val (satisfy (= (+ 1 (fresh)) 3))) := 2
  )
 
+(tests
+ "*"
+  (only-val (satisfy (= (* 1 (fresh)) 3))) := 3)
+
+(tests
+ "-"
+  (only-val (satisfy (= (- 1 (fresh)) 3))) := -2)
+
+(tests
+ "dec"
+  (only-val (satisfy (= (dec (fresh)) 3))) := 4)
+
+(tests
+ "inc"
+  (only-val (satisfy (= (inc (fresh)) 3))) := 2)
+
+(tests
+ "even?"
+  (even? (only-val (satisfy (even? (fresh))))) := true)
+
+(tests
+ "odd?"
+  (odd? (only-val (satisfy (odd? (fresh))))) := true)
+
+(tests
+ "true?"
+  (true? (only-val (satisfy (true? (fresh))))) := true)
+
+(tests
+ "false?"
+  (false? (only-val (satisfy (false? (fresh))))) := true)
+
+(tests
+ "max"
+  (for [_ (range 5)]
+    (let [nums (take 5 (repeatedly (partial rand-int 1000)))]
+      (= (apply max nums)
+         (only-val (satisfy (= (fresh) (apply max nums)))))
+      := true)))
+
+(tests
+ "max"
+  (for [_ (range 5)]
+    (let [nums (take 5 (repeatedly (partial rand-int 1000)))]
+      (= (apply min nums)
+         (only-val (satisfy (= (fresh) (apply min nums)))))
+      := true)))
+
+(tests
+ (/ 6 2)
+  "/"
+  (only-val (satisfy (= (/ 6 (fresh)) 3))) := 2)
+
 (tests "="
   (count (only-val (protocols/decisions (?> (= (fresh) 1)))))
   := 1
@@ -333,3 +388,21 @@
                     (+ > <))]
          (= 3 (plus (fresh) 1))))))))
 
+#_(tests "loop"
+  (macroexpand '(?> (loop [+ 0]
+                      (if (< + 3)
+                        (recur (inc +))
+                        +)))) 
+  distinct
+  cycle
+  every?
+  some-fn
+  (defn hey [a b]
+    (+ a b))
+
+
+
+  (meta #'hey)
+  riddley/walk
+
+  (+ 1 nil))

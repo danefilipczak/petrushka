@@ -353,7 +353,7 @@
         new-locals (into #{} (map first kvs))]
     (apply
      list
-     'let*
+     (first form)
      (into [] (mapcat (fn [[k v]] [k (walk locals v)]) kvs))
      (walk 
       (clojure.set/union locals new-locals)
@@ -400,7 +400,7 @@
       (and (list? form)
            (symbol? (first form))
            (not (contains? locals (first form))))
-      (cond (= 'let* (first form))
+      (cond (contains? #{'loop* 'let*} (first form))
             (walk-let* locals form)
 
             (= 'fn* (first form))
