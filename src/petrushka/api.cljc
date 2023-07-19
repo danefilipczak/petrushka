@@ -110,12 +110,12 @@
     (:decision x)
     x))
 
-(defn bind [set decision]
-  "Constrains a decision, presumably a set decision, to be a subset of set.
+(defn bind [super decision]
+  "Constrains a decision, presumably a set decision, to be a subset of super.
    Referentially transparent - evaluates to the decision.
    No-op when used with decisions of other types."
   {:pre [(decision? decision)]}
-  (->Binding (apply sorted-set set) decision))
+  (->Binding (apply sorted-set super) decision))
 
 (defn intersect-bindings
   "given a decision and two bindings,

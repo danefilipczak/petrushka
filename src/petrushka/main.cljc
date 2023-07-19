@@ -93,6 +93,16 @@
   #_(apply api/conjunction args) ;; todo - though their implementations are the same, calling the impl function makes some tests fail. why?
   )
 
+(defn disjunction [& args]
+  (loop [expr (first args)
+         more (rest args)]
+    (if (seq more)
+      (recur
+       (?>
+        (or expr (first more)))
+       (rest more))
+      expr)))
+
 (defmacro ^:introduced forall [[bind set-expr] constraint-expr]
   `(let [~bind (fresh)]
      (?> (terms.introduced/forall 
@@ -103,6 +113,9 @@
   (boolean (api/cacheing-decisions x)))
 
 (def bind api/bind)
+
+(defn fresh-set [super]
+  (bind super (fresh)))
 
 (tests
  (protocols/decisions 1)
