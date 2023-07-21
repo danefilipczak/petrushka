@@ -16,8 +16,6 @@
 (declare cacheing-validate)
 (declare cacheing-decisions)
 
-(def ^:dynamic *debug* false)
-
 (defn type-error! [expression v1 v2]
   (let [[type1 exp1] (first v1)
         [type2 exp2] (first v2)
@@ -242,13 +240,6 @@
                      (map cacheing-decisions)
                      (apply merge-with-key intersect-domains))))
 
-#_(extend-protocol protocols/IExpress
- nil
-  (write [self] self)
-  (codomain [self] {Null self})
-  (decisions [_self] nil)
-  (validate [self] self))
-
 (defn unify-argv-decisions [expression]
   {:post [(spec/valid? ::decisions %)]}
   (->> (:argv expression)
@@ -311,40 +302,6 @@
 (def macro-sym? (partial fn-inspect (comp boolean :macro meta)))
 (def function-sym? (partial fn-inspect (comp not :macro meta)))
 (def introduced? (partial fn-inspect (comp :introduced meta)))
-
-#_(defmacro dither [form]
-  (clojure.walk/postwalk
-   (fn [f]
-     (cond
-
-       ;; macros
-       (and (list? f)
-            (macro-sym? (first f)))
-       (if (introduced? (first f))
-         f
-         (let [qualified-symbol (symbols/fully-qualify-symbol (first f))
-               ast-constructor-fn (protocols/rewrite-macro qualified-symbol)]
-           (if (not= qualified-symbol ast-constructor-fn)
-             `(if (some cacheing-decisions ~(vec (rest f)))
-                (cacheing-validate (~ast-constructor-fn ~(vec (rest f))))
-                ~f)
-             f)))
-
-       ;; functions
-       (function-sym? f) `(rewrite-fn ~f)
-
-       ;; special forms
-       (and (list? f)
-            (symbol? (first f)))
-       (let [ast-constructor-fn (protocols/rewrite-symbol (first f))]
-         (if (not= (first f) ast-constructor-fn)
-           `(if (some cacheing-decisions ~(vec (rest f)))
-              (cacheing-validate (~ast-constructor-fn ~@(rest f)))
-              ~f)
-           f))
-
-       :else f))
-   form))
 
 (declare walk)
 
@@ -468,107 +425,6 @@
       (throw (ex-info err {}))
       (when (not= out "=====UNSATISFIABLE=====\n") ;; todo - grep for this anywhere in the out string. it might be at the end, or be followed by other text
         out))))
-
-(defn ->output [decisions]
-  (let [var-string (->> (for [decision (sort-by :id (-> decisions keys))]
-                          (>> {:x (protocols/translate decision)}
-                              "\\\"\\({{x}})\\\""))
-                        (interpose " ")
-                        (apply str))]
-    (>> {:x var-string}
-        "output([\"[{{x}}]\"]);")))
-
-(defn domain->type [domain]
-  {:pre [(spec/valid? ::domain domain)]}
-  (first (sort (keys domain))))
-
-(defn decisions->var-declarations [decisions bindings]
-  (->> decisions
-       (map (fn [[decision domain]]
-              (let [set (binding-set (get bindings decision))
-                    type (domain->type domain)
-                    _ (when (and (= type types/Set) (nil? set))
-                        (throw (ex-info (str "unbound set decision: " (protocols/write decision)) {})))
-                    env {:range (some-> set protocols/translate)
-                         :decision (protocols/translate decision)}
-                    >>* (partial >> env)]
-                (cond
-                  (= type types/Set) (>>* "var set of {{range}}: {{decision}};")
-                  (= type types/Numeric) (>>* "var int: {{decision}};")
-                  (= type types/Bool) (>>* "var bool: {{decision}};")))))
-       sort))
-
-(defmulti detranspile*
-  (fn [decisions [decision _out-str]]
-    (domain->type (get decisions decision))))
-
-(defmethod detranspile* types/Numeric [_ [_ out-str]]
-  (Integer/parseInt out-str))
-
-(defmethod detranspile* types/Bool [_ [_ out-str]]
-  (Boolean/parseBoolean out-str))
-
-(defmethod detranspile* types/Set [_ [_ out-str]]
-  (if (re-matches #"[0-9]*\.\.[0-9]*" out-str)
-    (let [[lower upper] (->> (string/split out-str #"\.\.")
-                             (map #(Integer/parseInt %)))]
-      (apply sorted-set (range lower (+ 1 upper))))
-    (read-string (str "#" out-str))))
-
-(defn detranspile [& [decisions out-str :as args]]
-  (def margs args)
-  (->> (string/split out-str #"\n")
-       first
-       read-string
-       (interleave (sort-by :id (-> decisions keys)))
-       (partition 2)
-       (map (partial detranspile* decisions))
-       (zipmap (sort-by :id (-> decisions keys)))))
-
-(defn solve [{:keys [all? async?] :as opts}
-             constraint
-             objective]
-  {:pre [(some? constraint)
-         (contains? (protocols/codomain constraint) types/Bool)
-         (or (nil? objective) (contains? (protocols/codomain objective) types/Numeric))]}
-  (let [constraint-str (>> {:e (protocols/translate constraint)}
-                           "constraint {{e}};")
-        directive-str (if objective
-                        (>> {:e (protocols/translate objective)}
-                            "solve maximize {{e}};")
-                        "solve satisfy;")
-        merged-decisions (merge-with-key
-                          intersect-domains
-                          (cacheing-decisions constraint)
-                          (when objective (cacheing-decisions objective)))
-        var-declarations-str (decisions->var-declarations
-                              merged-decisions
-                              (merge-with-key
-                               (partial intersect-bindings nil)
-                               (protocols/bindings constraint)
-                               (when objective (protocols/bindings objective))))
-        output-str (->output merged-decisions)
-        mzn (apply str (interpose "\n" (cond-> var-declarations-str
-                                         constraint-str (conj constraint-str)
-                                         :always (conj output-str directive-str))))
-        _ (def mzn mzn)]
-    (if *debug*
-      (do (spit "scratch/mzn" mzn) mzn)
-      ((if async?
-         adapter/call-async
-         adapter/call-sync)
-       all?
-       mzn
-       (partial detranspile merged-decisions)))))
-
-
-#_(extend-protocol protocols/IExpress
- clojure.lang.Sequential
-  (write [self] (apply list 'list (map protocols/write self)))
-  (codomain [self] {Sequential self})
-  (decisions [self] (->> (map cacheing-decisions self)
-                     (apply merge-with-key intersect-domains)))
-  (validate [self] (map protocols/validate self)))
 
 (def cacheing-validate (memoize protocols/validate))
 (def cacheing-decisions (memoize protocols/decisions))

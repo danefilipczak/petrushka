@@ -3,6 +3,7 @@
             [petrushka.protocols :as protocols]
             [petrushka.main :as main :refer [conjunction bind ?> fresh satisfy]]
             [petrushka.types :as types]
+            [petrushka.solver :as solver]
             [petrushka.utils.test :refer [throws?]]))
 
 (tests
@@ -137,7 +138,7 @@
       (= x #{0 4 7})
       (interval-necklace-pcs x [4 3 5]))))
   ;; it proves this 'right' quickly
-
+  
 
   (let [chords (take 5 (repeatedly fresh))
         structure (?> (apply
@@ -152,22 +153,48 @@
                            #_(interval-necklace-pcs x [4 3 5])))]
     (map #(get solution %) chords))
 
-  (binding [api/*debug* true]
+  (binding [solver/*debug* true]
     (satisfy
-     (let [x (fresh)]
-       (and (?> (= x #{2 5 9}))
-            (or (interval-necklace-pcs x [3 4 5])
-                #_(interval-necklace-pcs x [4 3 5]))))))
+     (?>
+      (let [x (fresh)]
+        (and (?> (= x #{2 5 9}))
+             (or (interval-necklace-pcs x [3 4 5])
+                 (interval-necklace-pcs x [4 3 5])))))))
+  
+  (binding [solver/*debug* true]
+    (satisfy
+     (?>
+      (let [x (main/fresh-set (range 12))]
+        (and (> 2 (fresh)) 
+             (and (?> (= x (clojure.set/intersection #{2 5 9} (main/fresh-set (range 12)))))
+                  (or (= x #{2 5 9})
+                      (= x #{2 3 9}))))))))
+  
+  (binding [solver/*debug* true]
+    (satisfy
+     (?>
+      (let [x (main/fresh-set (range 12))]
+        (= x (clojure.set/intersection #{2 5 9} 
+                                       (main/fresh-set (range 12))))))))
 
-  (protocols/write
-   (?>
-    (let [x (fresh)]
-      (and (= x #{2 5 9})
-           (or (interval-necklace-pcs x [3 4 5])
-               #_(interval-necklace-pcs x [4 3 5]))))))
-
-  ;; this case fails to terminate once you add the second condition. why? 
-
+  (binding [solver/*debug* true]
+    (let [x (fresh)
+          solution (satisfy
+                    (?>
+                     (and (= x #{2 5 9})
+                          (or (interval-necklace-pcs x [3 4 5])
+                              (interval-necklace-pcs x [4 3 5])))))] ;; pretty close - uncommenting throws an err. getting there!
+      (get solution x)))
+  
+  (binding [solver/*debug* true]
+    (let [x (fresh)
+          solution (satisfy (interval-necklace-pcs x [3 4 5]))]
+      (get solution x))) 
+  
+  ;; observing the generated minizinc from above, we see that the flattening fails at the introduction of the binding. 
+  ;; This is because the 'bound' term is not equal to the var in the ast. 
+  ;; we need to make bindings referentially transparent by switching to metadata. 
+  
   (satisfy
    (let [x (fresh)]
      (and
@@ -176,7 +203,7 @@
   ;; it's unable to prove this 'wrong' in a reasonable amount of time. why?
   ;; it couldn't prove it wrong because of the ol 'pitchclass only registering >0 and not less than 11' bug. 
   ;; it is fixed after loading api. please track down and fix this. 
-
+  
   (binding [api/*debug* true]
     (satisfy
      (let [x (fresh)]

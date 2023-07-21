@@ -167,6 +167,8 @@
   (validate [self] (api/validate-domains self))
   (translate [self] (api/translate-nary-operation "/\\" (map protocols/translate (:argv self)))))
 
+(defn conjunctive? [x] (= (type x) TermAnd))
+
 (defmethod 
   protocols/rewrite-macro 
   (symbols/fully-qualify-symbol 'and)

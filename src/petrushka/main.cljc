@@ -1,10 +1,11 @@
 (ns petrushka.main
-  (:require [petrushka.api :as api]
+  (:require [petrushka.solver :as solver]
             [hyperfiddle.rcf :refer [tests]]
             [petrushka.utils.test :as utils.test]
             [petrushka.utils.symbol :as symbols]
             [petrushka.protocols :as protocols]
             [petrushka.utils.string :refer [>>]]
+            [petrushka.api :as api]
             ;; for defmethods
             [petrushka.terms.core]
             [petrushka.terms.set]
@@ -31,7 +32,7 @@
   ([term]
    `(satisfy ~term {}))
   ([term opts]
-   `(api/solve
+   `(solver/solve
      ~opts
      (api/dither ~term)
      nil)))
@@ -46,7 +47,7 @@
   ([objective constraint]
    `(maximize ~objective ~constraint {}))
   ([objective constraint opts]
-   `(api/solve
+   `(solver/solve
      ~opts
      (api/dither ~constraint)
      (api/dither ~objective))))
