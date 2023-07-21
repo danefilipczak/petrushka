@@ -84,36 +84,19 @@
   (protocols/write [self] (list 'fresh (:id self)))
   (codomain [self] (zipmap types/all-decision-types (repeat self)))
   (decisions [self] {self (zipmap types/all-decision-types (repeat self))})
-  (bindings [self] nil)
+  (bindings [self] (when-let [r (::range (meta self))]
+                     {self [r self]}))
   (validate [self] self)
   (translate [self] (str (:id self))))
 
-(defrecord Binding [set decision]
-  protocols/IExpress
-  (write [self] (list 'bind set (protocols/write decision)))
-  (codomain [self] (protocols/codomain decision))
-  (decisions [self] (cacheing-decisions decision))
-  (validate [_self] (cacheing-validate decision))
-  (translate [_self] (protocols/translate decision))
-  (bindings [self] {decision [set self]}))
-
 (def decision? (partial instance? Decision))
-(def binding? (partial instance? Binding))
-(def decidable? (some-fn decision? binding?))
- 
-(defn decidable->decision [x]
-  {:pre [(decidable? x)]
-   :post [(decision? %)]}
-  (if (binding? x)
-    (:decision x)
-    x))
 
 (defn bind [super decision]
   "Constrains a decision, presumably a set decision, to be a subset of super.
    Referentially transparent - evaluates to the decision.
    No-op when used with decisions of other types."
   {:pre [(decision? decision)]}
-  (->Binding (apply sorted-set super) decision))
+  (with-meta decision {::range (apply sorted-set super)}))
 
 (defn intersect-bindings
   "given a decision and two bindings,
@@ -245,11 +228,11 @@
   (->> (:argv expression)
        ;; this line is only relevant if the arg is a decision. otherwise we're constantly restricting the decision to the domains of its call sites.
        (map (fn [domain arg]
-              (if (decidable? arg)
+              (if (decision? arg)
                 (merge-with-key
                  intersect-domains
                  (cacheing-decisions arg)
-                 {(decidable->decision arg) domain})
+                 {arg domain})
                 (cacheing-decisions arg)))
             (protocols/domainv expression))
        (apply merge-with-key intersect-domains)))
