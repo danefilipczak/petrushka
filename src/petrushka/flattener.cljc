@@ -2,7 +2,8 @@
   (:require [petrushka.terms.core :as terms.core]
             [petrushka.terms.utils :as terms.utils]
             [petrushka.protocols :as protocols]
-            [petrushka.api :as api]))
+            [petrushka.api :as api]
+            [petrushka.types :as types]))
 
 (defn conjuctive-flattening* [collected node]
   (if (terms.core/conjunctive? node)
@@ -28,26 +29,35 @@
   
   )
 
-(defn update-sub-map [substitutions node] 
-  (if (contains? substitutions node)
-    substitutions
-    (assoc
-     substitutions
-     node
-     (cond->> (api/->Decision (str "introduced" (gensym)))
-       false #_(not-empty (protocols/bindings node))
-       (api/bind 
-        (apply 
-         clojure.set/union 
-         (map 
-          api/binding-set 
-          (vals (protocols/bindings node)))))))))
+(defn update-sub-map [substitutions node]
+  (let [preserve? (or
+                   (contains? substitutions node)
+                   ;; an identical expression has been substituted elsewhere in the tree
+                   ;; allowing the existing substitution to remain is a form of common subexpression elimination 
+
+                   (contains?
+                    (set (keys (protocols/codomain node)))
+                    types/Set)
+                   ;; substitution of sets requires forwarding of bindings. skip for now... 
+                   )]
+    (if preserve?
+      substitutions
+      (let [type (types/domain->type 
+                  (protocols/codomain node))]
+        (assoc
+         substitutions
+         node
+         (api/force-type 
+          (api/->Decision (str "introduced" (gensym)))
+          type))))))
 
 (defn post-order-traversal [root substitutions node] 
   (if (simple-term? node)
-    (update-sub-map 
-     substitutions 
-     node)
+    (if root
+      [node {}]
+      (update-sub-map 
+       substitutions 
+       node))
     (let [substitutions' (reduce 
                           (partial post-order-traversal false) 
                           substitutions 
@@ -60,23 +70,21 @@
                   substitutions'
                   node-with-subs)]
         (if root 
-          [(get subs node-with-subs) 
-           subs]
+          [(get subs node-with-subs) subs]
           subs)))))  
 
 (defn conjuctive-flattening [node]
   (def node node)
-  #_(let [[root subs] (post-order-traversal true {} node)
+  (let [[root subs] (post-order-traversal true {} node)
         _ (def subs subs)]
     (conj
      (for [[k v] subs]
        (terms.core/->TermEquals [k v]))
-     (terms.core/->TermEquals [root true])))
-  [node]
-  )
+     root)))
 
 (comment
-  (vals (conjuctive-flattening node))
+  (protocols/write (conjuctive-flattening node))
+  (vals )
   (protocols/write node)
 
   (vals (second (post-order-traversal true {} node))) 
@@ -87,12 +95,18 @@
 
   
 
-  ;; # flattening 
-  ;; perform a post-order transversal of the tree
-  ;; keep track of a map of sub-expressions -> their introduced fresh vars
-  ;; by using the sub-expressions as the keys of the maps, I believe we get common subexpression elimination 
+  ;; Flattening Process:
+
+  ;; # unification - analyses
+;; Getting all decision types from the tree.
+  ;; # reification - supplimented AST
+;; Walking through the tree and replacing decisions with forced-variable versions  
+  ;; replacing nodes with expanded versions of themselves
   
-  ;; feed that back - possibly by transforming it into a big conjuction and running it through the conjuctive flattener 
+;; Performing a post-order traversal, replacing expressions with variables that are forced to belong to the codomain of the expression.
+;; Keeping a map of sub-expressions and the newly introduced fresh variables.
+;; Achieving common subexpression elimination by using the sub-expressions as keys in the map.
+  ;; optimization - unrolling compound booleans into separate statements. (this can be acheived by implementing conjunctive translation in terms of 'expand') 
   
 
   (map protocols/write (conjuctive-flattening c))

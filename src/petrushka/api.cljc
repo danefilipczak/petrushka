@@ -79,10 +79,25 @@
                  (protocols/write (binding-source binding2)))
             {})))
 
+(defn forced-typed [decision]
+  ;; primarily, decision types are inferred from their usage, gradually being whittled 
+  ;; away from the union of all possible types as the same var is used in more specific oeprations.
+  ;; once the final model has been compiled as final types inferred for decisions, 
+  ;; it's possible to 'commit' those types to the decision,
+  ;; and this is the facility for doing so. 
+
+  ;; committing the type to the decision allows us to minipulate sub-trees 
+  ;; of the complete model while retaining knowledge of the type that the decision 
+  ;; will ultimatly be bound to,
+  ;; even if the type is ambiguous within the sub-tree.
+  (::type (meta decision)))
+
 (defrecord Decision [id]
   protocols/IExpress
   (protocols/write [self] (list 'fresh (:id self)))
-  (codomain [self] (zipmap types/all-decision-types (repeat self)))
+  (codomain [self] (if-let [type (forced-typed self)] 
+                     {type ::impl}  
+                     (zipmap types/all-decision-types (repeat self))))
   (decisions [self] {self (zipmap types/all-decision-types (repeat self))})
   (bindings [self] (when-let [r (::range (meta self))]
                      {self [r self]}))
@@ -91,12 +106,25 @@
 
 (def decision? (partial instance? Decision))
 
+(defn force-type [decision type]
+  {:pre [(decision? decision)
+         (types/all-decision-types type)]} 
+  (with-meta 
+    decision 
+    (merge 
+     (meta decision)
+     {::type type})))
+
 (defn bind [super decision]
   "Constrains a decision, presumably a set decision, to be a subset of super.
    Referentially transparent - evaluates to the decision.
    No-op when used with decisions of other types."
   {:pre [(decision? decision)]}
-  (with-meta decision {::range (apply sorted-set super)}))
+  (with-meta 
+    decision
+    (merge 
+     (meta decision)
+     {::range (apply sorted-set super)})))
 
 (defn intersect-bindings
   "given a decision and two bindings,
@@ -199,11 +227,11 @@
   ;; todo is it really helpful to extend this onto object? what would happen if we did not?
   Object
   (write [self] self)
-  (codomain [self] (throw (ex-info "unsupported type" {:self self})))
+  (codomain [self] (throw (ex-info (str "unsupported codomain for type " (type self)) {:self self})))
   (decisions [_self] nil)
   (bindings [_self] nil)
   (validate [self] self)
-  (translate [self] (throw (ex-info "unsupported type" {:self self})))
+  (translate [self] (throw (ex-info (str "unsupported translation for type" (type self)) {:self self})))
   (bindings [self] nil))
 
 (extend-protocol protocols/IExpress

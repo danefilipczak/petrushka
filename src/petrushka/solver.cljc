@@ -10,10 +10,6 @@
 
 (def ^:dynamic *debug* false)
 
-(defn domain->type [domain]
-  {:pre [(spec/valid? ::api/domain domain)]}
-  (first (sort (keys domain))))
-
 (defn ->output [decisions]
   (let [var-string (->> (for [decision (sort-by :id (-> decisions keys))]
                           (>> {:x (protocols/translate decision)}
@@ -27,7 +23,7 @@
   (->> decisions
        (map (fn [[decision domain]]
               (let [set (api/binding-set (get bindings decision))
-                    type (domain->type domain)
+                    type (types/domain->type domain)
                     _ (when (and (= type types/Set) (nil? set))
                         (throw (ex-info (str "unbound set decision: " (protocols/write decision)) {})))
                     env {:range (some-> set protocols/translate)
@@ -41,7 +37,7 @@
 
 (defmulti detranspile*
   (fn [decisions [decision _out-str]]
-    (domain->type (get decisions decision))))
+    (types/domain->type (get decisions decision))))
 
 (defmethod detranspile* types/Numeric [_ [_ out-str]]
   (Integer/parseInt out-str))
@@ -72,7 +68,20 @@
   {:pre [(some? constraint)
          (contains? (protocols/codomain constraint) types/Bool)
          (or (nil? objective) (contains? (protocols/codomain objective) types/Numeric))]}
-  (let [constraints (flattener/conjuctive-flattening constraint)
+  (let [model-decisions (api/merge-with-key 
+                         api/intersect-domains
+                         (api/cacheing-decisions constraint)
+                         (when objective [(api/cacheing-decisions objective)]))
+        constraint-with-forced-decisions (clojure.walk/postwalk 
+                                          (fn [x]
+                                            (if (api/decision? x)
+                                              (api/force-type 
+                                               x
+                                               (types/domain->type
+                                                (get model-decisions x)))
+                                              x))
+                                          constraint)
+        constraints (flattener/conjuctive-flattening constraint-with-forced-decisions)
         constraint-str (->> constraints
                             (map (fn [constraint] (>> {:e (protocols/translate constraint)}
                                                       "constraint {{e}};")))
@@ -85,8 +94,8 @@
         merged-decisions (apply 
                           api/merge-with-key
                           api/intersect-domains
-                          (concat (map api/cacheing-decisions constraints)
-                                  (when objective [(api/cacheing-decisions objective)])))
+                          model-decisions
+                          (map api/cacheing-decisions constraints))
         var-declarations-str (decisions->var-declarations
                               merged-decisions
                               (apply 
