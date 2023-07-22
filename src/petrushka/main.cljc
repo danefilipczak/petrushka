@@ -43,6 +43,14 @@
         (utils.test/throws? (satisfy (= (fresh) 1))) := false
         ))
 
+(defmacro
+  solve-for
+  [sym constraint]
+  `(let [~sym (fresh)]
+     (get
+      (satisfy ~constraint)
+      ~sym)))
+
 (defmacro maximize
   ([objective constraint]
    `(maximize ~objective ~constraint {}))

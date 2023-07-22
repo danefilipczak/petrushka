@@ -1,11 +1,10 @@
 (ns petrushka.terms.core-test
   (:require [hyperfiddle.rcf :refer [tests]]
-            [petrushka.main :as main :refer [bind ?> fresh satisfy]]
+            [petrushka.main :as main :refer [?> bind fresh satisfy solve-for]]
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
-            [petrushka.utils.test :refer [throws? only-val]]
-            [hyperfiddle.rcf :as rcf]
-            [petrushka.api :as api]))
+            [petrushka.utils.test :refer [only-val throws?]]
+            [hyperfiddle.rcf :as rcf]))
 
 (tests 
  ">="
@@ -195,15 +194,15 @@
 
 (tests
  "even?"
-  (even? (only-val (satisfy (even? (fresh))))) := true)
+  (even? (solve-for x (even? x))) := true)
 
-(tests
- "odd?"
-  (odd? (only-val (satisfy (odd? (fresh))))) := true)
+(tests 
+ "odd?" 
+  (odd? (solve-for x (odd? x))) := true)
 
 (tests
  "true?"
-  (true? (only-val (satisfy (true? (fresh))))) := true)
+  (true? (solve-for x (true? x))) := true)
 
 (tests
  "false?"
