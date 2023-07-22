@@ -7,6 +7,12 @@
             [clojure.spec.alpha :as s]
             [hyperfiddle.rcf :as rcf]))
 
+(defn translation-error! [self]
+  (throw
+   (ex-info
+    "This isn't expected to happen because expansion should always be applied before translation."
+    {:self self})))
+
 (defrecord TermPlus [argv]
   protocols/IExpress
   (write [_self] (apply list '+ (map protocols/write argv)))
@@ -82,6 +88,8 @@
 (defmethod protocols/rewrite-function dec [_] ->TermDec)
 
 (defrecord TermEven? [argv]
+  protocols/IExpand
+  (expand [self] (api/dither (= (mod (first argv) 2) 0)))
   protocols/IExpress
   (write [_self] (apply list 'even? (map protocols/write argv)))
   (codomain [self] {types/Bool self})
@@ -89,12 +97,13 @@
   (decisions [self] (api/unify-argv-decisions self))
   (bindings [self] (api/unify-argv-bindings self))
   (validate [self] (api/validate-domains self))
-  (translate [self] (protocols/translate
-                     (api/dither (= (mod (first argv) 2) 0)))))
+  (translate [self] (translation-error! self)))
 
 (defmethod protocols/rewrite-function even? [_] ->TermEven?)
 
 (defrecord TermOdd? [argv]
+  protocols/IExpand
+  (expand [self] (api/dither (= (mod (first argv) 2) 1)))
   protocols/IExpress
   (write [_self] (apply list 'odd? (map protocols/write argv)))
   (codomain [self] {types/Bool self})
@@ -102,8 +111,7 @@
   (decisions [self] (api/unify-argv-decisions self))
   (bindings [self] (api/unify-argv-bindings self))
   (validate [self] (api/validate-domains self))
-  (translate [self] (protocols/translate
-                     (api/dither (= (mod (first argv) 2) 1)))))
+  (translate [self] (translation-error! self)))
 
 (defmethod protocols/rewrite-function odd? [_] ->TermOdd?)
 
@@ -157,7 +165,9 @@
 
 (defmethod protocols/rewrite-function false? [_] ->TermFalse?)
 
-(defrecord TermAnd [argv]
+(defrecord TermAnd [argv] 
+  protocols/IExpand
+  (expand [self] (apply api/conjunction (:argv self)))
   protocols/IExpress
   (write [_self] (apply list 'and (map protocols/write argv)))
   (codomain [self] {types/Bool self})
@@ -176,6 +186,8 @@
   ->TermAnd)
 
 (defrecord TermOr [argv]
+  protocols/IExpand
+  (expand [self] (apply api/disjunction (:argv self)))
   protocols/IExpress
   (write [_self] (apply list 'or (map protocols/write argv)))
   (codomain [self] {types/Bool self})
@@ -451,6 +463,14 @@
 (defmethod protocols/rewrite-function zero? [_] ->TermZero?)
 
 (defrecord TermMod [argv]
+  protocols/IExpand
+  (expand [self] (api/dither
+                  (let [n (first argv)
+                        d (second argv)
+                        m (api/dither (rem n d))]
+                    (if (or (zero? m) (= (pos? n) (pos? d)))
+                      m
+                      (+ m d)))))
   protocols/IExpress
   (write [_self] (apply list 'mod (map protocols/write argv)))
   (codomain [self] {types/Numeric self})
@@ -458,15 +478,7 @@
   (decisions [self] (api/unify-argv-decisions self))
   (bindings [self] (api/unify-argv-bindings self))
   (validate [self] (api/validate-domains self))
-  (translate [self]
-    (protocols/translate
-     (api/dither
-      (let [n (first argv)
-            d (second argv)
-            m (api/dither (rem n d))]
-        (if (or (zero? m) (= (pos? n) (pos? d)))
-          m
-          (+ m d)))))))
+  (translate [self] (translation-error! self)))
 
 (defmethod protocols/rewrite-function mod [_] ->TermMod)
 

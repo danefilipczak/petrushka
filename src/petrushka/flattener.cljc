@@ -5,13 +5,6 @@
             [petrushka.api :as api]
             [petrushka.types :as types]))
 
-(defn conjuctive-flattening* [collected node]
-  (if (terms.core/conjunctive? node)
-    (mapcat 
-     (partial conjuctive-flattening* collected) 
-     (terms.utils/decendents node))
-    [node]))
-
 (defn simple-term? [node]
   (not-any? terms.utils/decendents (terms.utils/decendents node)))
 

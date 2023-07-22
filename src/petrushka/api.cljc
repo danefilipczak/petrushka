@@ -414,6 +414,16 @@
        (rest more))
       expr)))
 
+(defn disjunction [& args]
+  (loop [expr (first args)
+         more (rest args)]
+    (if (seq more)
+      (recur
+       (dither
+        (or expr (first more)))
+       (rest more))
+      expr)))
+
 (defn translate-comparator [self op function]
   (case (count (:argv self))
     1 (protocols/translate true)

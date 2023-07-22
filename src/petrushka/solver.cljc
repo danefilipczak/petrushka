@@ -5,6 +5,7 @@
             [petrushka.types :as types]
             [clojure.string :as string]
             [clojure.spec.alpha :as spec]
+            [petrushka.utils.log :as log]
             [petrushka.adapter :as adapter]
             [petrushka.utils.string :refer [>>]]))
 
@@ -62,26 +63,44 @@
        (map (partial detranspile* decisions))
        (zipmap (sort-by :id (-> decisions keys)))))
 
+(defn expand-all [node] 
+  ;; todo this is very slow, and potentially incorrect
+  ;; what if a term expands to something that itself needs expansion, like an if?
+  ;; please correct
+  (clojure.walk/prewalk
+   (fn [n]
+     (if
+      (satisfies? protocols/IExpand n)
+       (protocols/expand n)
+       n))
+   node))
+
 (defn solve [{:keys [all? async?] :as opts}
              constraint
              objective]
   {:pre [(some? constraint)
          (contains? (protocols/codomain constraint) types/Bool)
          (or (nil? objective) (contains? (protocols/codomain objective) types/Numeric))]}
-  (let [model-decisions (api/merge-with-key 
+  (let [model-decisions (api/merge-with-key
                          api/intersect-domains
                          (api/cacheing-decisions constraint)
                          (when objective [(api/cacheing-decisions objective)]))
-        constraint-with-forced-decisions (clojure.walk/postwalk 
-                                          (fn [x]
-                                            (if (api/decision? x)
-                                              (api/force-type 
-                                               x
-                                               (types/domain->type
-                                                (get model-decisions x)))
-                                              x))
-                                          constraint)
-        constraints (flattener/conjuctive-flattening constraint-with-forced-decisions)
+        constraint-with-forced-decisions-and-expanded-terms (clojure.walk/postwalk
+                                                             (fn [x]
+                                                               (cond 
+                                                                 (api/decision? x)
+                                                                 (api/force-type
+                                                                  x
+                                                                  (types/domain->type
+                                                                   (get model-decisions x)))
+                                                                 
+                                                                 (satisfies? protocols/IExpand x)
+                                                                 (expand-all x)
+
+                                                                 :else x))
+                                                             constraint)
+        constraints (flattener/conjuctive-flattening
+                     constraint-with-forced-decisions-and-expanded-terms)
         constraint-str (->> constraints
                             (map (fn [constraint] (>> {:e (protocols/translate constraint)}
                                                       "constraint {{e}};")))
@@ -91,14 +110,14 @@
                         (>> {:e (protocols/translate objective)}
                             "solve maximize {{e}};")
                         "solve satisfy;")
-        merged-decisions (apply 
+        merged-decisions (apply
                           api/merge-with-key
                           api/intersect-domains
                           model-decisions
                           (map api/cacheing-decisions constraints))
         var-declarations-str (decisions->var-declarations
                               merged-decisions
-                              (apply 
+                              (apply
                                api/merge-with-key
                                (partial api/intersect-bindings "ignore") ;; as far as i can tell, this arg was partialled in errantly
                                (concat (map protocols/bindings constraints)

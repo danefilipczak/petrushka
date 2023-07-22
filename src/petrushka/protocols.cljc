@@ -9,6 +9,9 @@
   (validate [self])
   (bindings [self]))
 
+(defprotocol IExpand
+  (expand [self]))
+
 (defmulti rewrite-function identity)
 
 (defmethod rewrite-function :default [x] x)
