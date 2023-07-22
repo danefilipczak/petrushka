@@ -1,11 +1,10 @@
 (ns petrushka.terms.core
-  (:require [petrushka.protocols :as protocols]
-            [petrushka.types :as types]
-            [petrushka.utils.symbol :as symbols]
-            [petrushka.utils.string :refer [>>]]
+  (:require [clojure.spec.alpha :as s]
             [petrushka.api :as api]
-            [clojure.spec.alpha :as s]
-            [hyperfiddle.rcf :as rcf]))
+            [petrushka.protocols :as protocols]
+            [petrushka.types :as types]
+            [petrushka.utils.string :refer [>>]]
+            [petrushka.utils.symbol :as symbols]))
 
 (defn translation-error! [self]
   (throw
@@ -14,7 +13,12 @@
     {:self self})))
 
 (defrecord TermPlus [argv]
-  protocols/IExpress
+  protocols/IExpand
+  (expand [self] (reduce
+                  (fn [acc curr]
+                    (api/dither (+ acc curr)))
+                  (:argv self)))
+  protocols/IExpress 
   (write [_self] (apply list '+ (map protocols/write argv)))
   (codomain [self] {types/Numeric self})
   (domainv [self] (repeat {types/Numeric self}))
@@ -247,6 +251,16 @@
 (defmethod protocols/rewrite-function < [_] ->TermLessThan)
 
 (defrecord TermGreaterThanOrEqualTo [argv]
+  protocols/IExpand
+  (expand [self] (case (count argv)
+                   1 true
+                   2 self
+                   (reduce
+                    (fn [acc [x y]]
+                      (api/dither
+                       (and acc (>= x y))))
+                    true
+                    (partition 2 1 argv))))
   protocols/IExpress
   (write [_self] (apply list '>= (map protocols/write argv)))
   (codomain [self] {types/Bool self})
