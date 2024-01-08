@@ -1,11 +1,9 @@
 (ns petrushka.api
-  (:require [clojure.java.shell :as shell]
-            [clojure.spec.alpha :as spec]
+  (:require [clojure.spec.alpha :as spec]
             [clojure.spec.alpha :as s]
             [clojure.string :as string]
             [clojure.set]
-            [hyperfiddle.rcf :refer [tests]]
-            [petrushka.adapter :as adapter]
+            [hyperfiddle.rcf :refer [tests]] 
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.utils.string :refer [>>]]
@@ -81,8 +79,8 @@
 
 (defn forced-typed [decision]
   ;; primarily, decision types are inferred from their usage, gradually being whittled 
-  ;; away from the union of all possible types as the same var is used in more specific oeprations.
-  ;; once the final model has been compiled as final types inferred for decisions, 
+  ;; away from the union of all possible types as the same var is used in more specific operations.
+  ;; once the final model has been compiled and final types inferred for decisions, 
   ;; it's possible to 'commit' those types to the decision,
   ;; and this is the facility for doing so. 
 
@@ -435,17 +433,8 @@
          (partition 2 1)
          (map (fn [[a b]]
                 ((rewrite-fn function) a b)))
-         (apply conjunction)
+         (apply #'conjunction)
          protocols/translate)))
-
-(defn fetch [mzn]
-  (let [temp-file (doto (java.io.File/createTempFile "petrushka" ".mzn") .deleteOnExit)
-        _ (spit temp-file mzn)
-        {:keys [exit out err]} (shell/sh "minizinc" (.getAbsolutePath temp-file) "-a")]
-    (if (not= exit 0)
-      (throw (ex-info err {}))
-      (when (not= out "=====UNSATISFIABLE=====\n") ;; todo - grep for this anywhere in the out string. it might be at the end, or be followed by other text
-        out))))
 
 (def cacheing-validate (memoize protocols/validate))
 (def cacheing-decisions (memoize protocols/decisions))

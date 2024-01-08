@@ -84,11 +84,12 @@
   (let [model-decisions (api/merge-with-key
                          api/intersect-domains
                          (api/cacheing-decisions constraint)
-                         (when objective [(api/cacheing-decisions objective)]))
+                         (when objective (api/cacheing-decisions objective)))
         constraint-with-forced-decisions-and-expanded-terms (clojure.walk/postwalk
                                                              (fn [x]
                                                                (cond 
-                                                                 (api/decision? x)
+                                                                 (and (api/decision? x) 
+                                                                      (get model-decisions x)) ;; some decisions in the tree are 'local' in the case of introduced statements like forall
                                                                  (api/force-type
                                                                   x
                                                                   (types/domain->type
@@ -98,9 +99,10 @@
                                                                  (expand-all x)
 
                                                                  :else x))
-                                                             constraint)
-        constraints (flattener/conjuctive-flattening
+                                                             constraint) 
+        #_#_constraints (flattener/conjuctive-flattening
                      constraint-with-forced-decisions-and-expanded-terms)
+        constraints [constraint-with-forced-decisions-and-expanded-terms]
         constraint-str (->> constraints
                             (map (fn [constraint] (>> {:e (protocols/translate constraint)}
                                                       "constraint {{e}};")))
@@ -135,3 +137,12 @@
        all?
        mzn
        (partial detranspile merged-decisions)))))
+
+#_(defn fetch [mzn]
+      (let [temp-file (doto (java.io.File/createTempFile "petrushka" ".mzn") .deleteOnExit)
+            _ (spit temp-file mzn)
+            {:keys [exit out err]} (shell/sh "minizinc" (.getAbsolutePath temp-file) "-a")]
+           (if (not= exit 0)
+               (throw (ex-info err {}))
+               (when (not= out "=====UNSATISFIABLE=====\n") ;; todo - grep for this anywhere in the out string. it might be at the end, or be followed by other text
+                     out))))

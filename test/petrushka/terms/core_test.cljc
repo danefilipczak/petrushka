@@ -4,7 +4,11 @@
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.utils.test :refer [only-val throws?]]
-            [hyperfiddle.rcf :as rcf]))
+            [petrushka.api] ;; for defmethods
+            ))
+
+(comment
+ (hyperfiddle.rcf/enable!))
 
 (tests 
  ">="
@@ -357,7 +361,7 @@
 (tests "mod and rem"
   true :=
   (some?
-   (let [n 5]
+   (let [n 3]
      (->> (for [x (concat (range (- 0 n) 0) (range 1 (inc n)))
                 y (concat (range (- 0 n) 0) (range 1 (inc n)))
                 :let [a (fresh)

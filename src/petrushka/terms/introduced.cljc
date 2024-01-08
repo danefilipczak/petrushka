@@ -21,7 +21,7 @@
                      (protocols/write constraint-expr)))))
   (codomain [self] {types/Bool self})
   (domainv [self] [{types/Numeric self} {types/Set self} {types/Bool self}])
-  (decisions [self]  (dissoc
+  (decisions [self] (dissoc
                       (api/unify-argv-decisions self)
                       (first argv)))
   (bindings [self] (api/unify-argv-bindings self))

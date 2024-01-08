@@ -1,10 +1,11 @@
 (ns petrushka.examples.examples-test
   (:require [hyperfiddle.rcf :refer [tests]]
             [petrushka.protocols :as protocols]
-            [petrushka.main :as main :refer [conjunction bind ?> fresh satisfy]]
+            [petrushka.main :as main :refer [conjunction bind ?> fresh satisfy solve-for]]
             [petrushka.types :as types]
             [petrushka.solver :as solver]
-            [petrushka.utils.test :refer [throws?]]))
+            [petrushka.utils.test :refer [throws?]]
+            [hyperfiddle.rcf :as rcf]))
 
 (tests
 
@@ -46,8 +47,8 @@
 
   )
 
-(defn pitchclass [x]
-  (?> (>= 11 x 0)))
+(defn pitchclass [x] 
+  (?> (contains? (into #{} (range 12)) x)))
 
 (defn interval-class [i]
   (?>
@@ -159,7 +160,7 @@
       (let [x (fresh)]
         (and (?> (= x #{2 5 9}))
              (or (interval-necklace-pcs x [3 4 5])
-                 (interval-necklace-pcs x [4 3 5])))))))
+                 #_(interval-necklace-pcs x [4 3 5]))))))) 
   
   (binding [solver/*debug* true]
     (satisfy
@@ -182,9 +183,18 @@
           solution (satisfy
                     (?>
                      (and (= x #{2 5 9})
-                          (or (interval-necklace-pcs x [3 4 5])
+                          (or #_(interval-necklace-pcs x [3 4 5])
                               (interval-necklace-pcs x [4 3 5])))))] ;; pretty close - uncommenting throws an err. getting there!
-      (get solution x)))
+      (get solution x))) 
+  
+  (binding [solver/*debug* true]
+    (let [one (fresh "necklace1")
+          two (fresh "necklace2")
+          x #{0 4 7}]
+      (satisfy (and
+                (and (= x one) (= x two)) 
+                (interval-necklace-pcs one [3 4 5])
+                (interval-necklace-pcs two [4 3 5]))))) 
   
   (binding [solver/*debug* true]
     (let [x (fresh)

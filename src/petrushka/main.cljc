@@ -1,15 +1,15 @@
 (ns petrushka.main
-  (:require [petrushka.solver :as solver]
-            [hyperfiddle.rcf :refer [tests]]
-            [petrushka.utils.test :as utils.test]
-            [petrushka.utils.symbol :as symbols]
-            [petrushka.protocols :as protocols]
-            [petrushka.utils.string :refer [>>]]
-            [petrushka.api :as api]
-            ;; for defmethods
+  (:require [hyperfiddle.rcf :refer [tests]]
+            [petrushka.protocols :as protocols] 
+            [petrushka.solver :as solver]
             [petrushka.terms.core]
+            [petrushka.terms.introduced :as terms.introduced]
             [petrushka.terms.set]
-            [petrushka.terms.introduced :as terms.introduced]))
+            [petrushka.types :as types]
+            [petrushka.utils.string :refer [>>]]
+            [petrushka.utils.test :as utils.test]
+            [petrushka.api :as api] 
+            :reload))
 
 (comment
   (hyperfiddle.rcf/enable!)
@@ -62,12 +62,13 @@
 
 (tests "maximize"
  (-> (let [a (fresh)]
-       (maximize a (clojure.core/and (>= a 3000) (= 3 (mod a 12)))))
+       (maximize a (clojure.core/and (>= a 3000) (= 11 (mod a 12)))))
      first 
      vals
      boolean) 
  := true
 
+  (mod 2147483639 12)
 
  (tests "objective must be types/Numeric"
         (utils.test/throws? (maximize (= (fresh) 1) true)) := true)
