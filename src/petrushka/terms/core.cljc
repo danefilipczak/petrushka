@@ -119,6 +119,9 @@
 
 (defmethod protocols/rewrite-function odd? [_] ->TermOdd?)
 
+(defn to-literal-array [elements]
+      (apply str (concat ["["] (interpose ", " elements) ["]"])))
+
 (defrecord TermMax [argv]
   protocols/IExpress
   (write [_self] (apply list 'max (map protocols/write argv)))
@@ -127,21 +130,21 @@
   (decisions [self] (api/unify-argv-decisions self))
   (bindings [self] (api/unify-argv-bindings self))
   (validate [self] (api/validate-domains self))
-  (translate [self] (api/translate-nary-operation "max" (map protocols/translate (:argv self)))))
+  (translate [self] (str "max(" (to-literal-array (map protocols/translate (:argv self))) ")")))
 
 (defmethod protocols/rewrite-function max [_] ->TermMax)
 
 (defrecord TermMin [argv]
   protocols/IExpress
-  (write [_self] (apply list 'max (map protocols/write argv)))
+  (write [_self] (apply list 'min (map protocols/write argv)))
   (codomain [self] {types/Numeric self})
   (domainv [self] (take (count argv) (repeat {types/Numeric self})))
   (decisions [self] (api/unify-argv-decisions self))
   (bindings [self] (api/unify-argv-bindings self))
   (validate [self] (api/validate-domains self))
-  (translate [self] (api/translate-nary-operation "min" (map protocols/translate (:argv self)))))
+  (translate [self] (str "min(" (to-literal-array (map protocols/translate (:argv self))) ")")))
 
-(defmethod protocols/rewrite-function max [_] ->TermMin)
+(defmethod protocols/rewrite-function min [_] ->TermMin)
 
 (defrecord TermTrue? [argv]
   protocols/IExpress

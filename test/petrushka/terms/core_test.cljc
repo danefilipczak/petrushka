@@ -215,18 +215,37 @@
 (tests
  "max"
   (for [_ (range 5)]
-    (let [nums (take 5 (repeatedly (partial rand-int 1000)))]
-      (= (apply max nums)
-         (only-val (satisfy (= (fresh) (apply max nums)))))
-      := true)))
+    (let [n 5
+          nums (take n (repeatedly (partial rand-int 1000)))
+          vars (take n (repeatedly fresh))
+          m (apply max nums)]
+         (boolean 
+          (satisfy
+           (and
+            (apply main/conjunction (map (fn [n v] (?> (= v n))) nums vars))
+            (= (apply max vars) m))))
+         := true
+         ))
+  
+  (only-val (satisfy (?> (= (fresh) (max 8 4 2))))) := 8
+  )
 
 (tests
- "max"
+ "min"
   (for [_ (range 5)]
-    (let [nums (take 5 (repeatedly (partial rand-int 1000)))]
-      (= (apply min nums)
-         (only-val (satisfy (= (fresh) (apply min nums)))))
-      := true)))
+       (let [n 5
+             nums (take n (repeatedly (partial rand-int 1000)))
+             vars (take n (repeatedly fresh))
+             m (apply min nums)]
+            (boolean
+             (satisfy
+              (and
+               (apply main/conjunction (map (fn [n v] (?> (= v n))) nums vars))
+               (= (apply min vars) m))))
+            := true))
+  
+  (only-val (satisfy (?> (= (fresh) (min 8 4 -2))))) := -2
+  )
 
 (tests
  (/ 6 2)
