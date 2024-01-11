@@ -2,6 +2,7 @@
   (:require [petrushka.protocols :as protocols]
             [petrushka.types :as types]
             [petrushka.api :as api]
+            [petrushka.set :as p.set]
             [clojure.set :as set]))
 
 (defrecord TermIntersection [argv]
@@ -27,6 +28,18 @@
            (translate [self] (api/translate-nary-operation "diff" (map protocols/translate (:argv self)))))
 
 (defmethod protocols/rewrite-function set/difference [_] ->TermDifference)
+
+(defrecord TermSymDiff [argv]
+           protocols/IExpress
+           (write [_self] (apply list 'petrushka.set/sym-diff (map protocols/write argv)))
+           (codomain [self] {types/Set self})
+           (domainv [self] (repeat {types/Set self}))
+           (decisions [self] (api/unify-argv-decisions self))
+           (bindings [self] (api/unify-argv-bindings self))
+           (validate [self] (api/validate-domains self))
+           (translate [self] (api/translate-nary-operation "symdiff" (map protocols/translate (:argv self)))))
+
+(defmethod protocols/rewrite-function p.set/sym-diff [_] ->TermSymDiff)
 
 (defrecord TermUnion [argv]
            protocols/IExpress

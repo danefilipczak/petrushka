@@ -3,6 +3,7 @@
             [petrushka.main :as main :refer [bind ?> fresh fresh-set satisfy]]
             [petrushka.protocols :as protocols]
             [petrushka.types :as types]
+            [petrushka.set :as p.set]
             [petrushka.utils.test :refer [throws? only-val]]
             [clojure.set :as set]))
 
@@ -30,6 +31,19 @@
          (and (= a #{1 2 3 4 5 6})
               (= b #{4 5 6 7 8 9})
               (= res (set/difference a b))))
+        res)))
+
+(tests
+ "symdiff"
+  #{1 2 3 7 8 9} :=
+  (let [res (fresh-set (range 12))
+        a (fresh-set (range 12))
+        b (fresh-set (range 12))]
+       (get
+        (satisfy
+         (and (= a #{1 2 3 4 5 6})
+              (= b #{4 5 6 7 8 9})
+              (= res (p.set/sym-diff a b))))
         res)))
 
 (tests
