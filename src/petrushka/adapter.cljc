@@ -21,7 +21,10 @@
     1 
     (comp 
      (filter (complement system-text?))
-     (map (or xfn identity))))))
+     (map (fn [x]
+            (if (string? x)
+               ((or xfn identity) x)
+               x)))))))
 
 (defmulti call-minizinc 
   (fn [env _chan _mzn _all?] env))
@@ -41,13 +44,13 @@
                 stderr (.getErrorStream proc)
                 err-writer (StringWriter.)]
       (doall (for [line (line-seq out-reader)]
-               (async/go (async/>! chan line))))
+                  (async/go (async/>! chan line))))
       (clojure.java.io/copy stderr err-writer)
-      (async/close! chan)
-      (let [exit (.waitFor proc)
-            error (.toString err-writer)]
-        (when (not= exit 0)
-          (throw (ex-info error {})))))))
+               (let [exit (.waitFor proc)
+                     error (.toString err-writer)] 
+                    (when (not= exit 0) 
+                          (async/>!! chan {::error error})))
+      (async/close! chan))))
 
 #?(:clj
    (tests
@@ -72,7 +75,10 @@
         solutions (async/<!!
                    (async/go-loop [solutions []]
                      (if-let [solution (async/<! chan)]
-                       (recur (conj solutions solution))
+                       (do 
+                        (when (::error solution) 
+                           (throw (ex-info (::error solution) {})))
+                        (recur (conj solutions solution)))
                        solutions)))]
     (if all? solutions (first solutions))))
 
