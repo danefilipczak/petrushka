@@ -49,3 +49,25 @@
                         true))))]
     (validate (get res x)))
   := true)
+
+
+(tests "for-set"
+
+  (tests "internal decision is validated as numeric"
+    (throws?
+     (main/for-set [a (main/fresh)] (if (= a #{}) 1 2)))
+    := true) 
+
+  (tests "internal decision is hidden from external retrieval"
+    (count
+     (protocols/decisions
+      (main/for-set [a (main/fresh)] (+ a 1))))
+    := 1)
+
+  (let [x (main/fresh)
+        res (main/satisfy
+             (=
+              #{1 2 3}
+              (main/for-set [a (main/bind (range 12) x)]
+                (+ a 1))))]
+       (get res x)) := #{0 1 2})

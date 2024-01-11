@@ -1,2 +1,3 @@
 {:indents {forall [[:block 1]]
+           for-set [[:block 1]]
            tests [[:block 1]]}}
