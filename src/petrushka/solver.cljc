@@ -105,18 +105,23 @@
 
                                                                  :else x))
                                                              constraint)
+        [obj & obj-consts] (when objective 
+                             (if *flatten?*
+                               (flattener/conjuctive-flattening objective)
+                               [objective]))
+        directive-str (if objective
+                        (>> {:e (protocols/translate obj)}
+                            "solve maximize {{e}};")
+                        "solve satisfy;")
         constraints (if *flatten?*
-                      (flattener/conjuctive-flattening constraint-with-forced-decisions-and-expanded-terms)
+                      (concat (flattener/conjuctive-flattening constraint-with-forced-decisions-and-expanded-terms)
+                              obj-consts)
                       [constraint-with-forced-decisions-and-expanded-terms])  
         constraint-str (->> constraints
                             (map (fn [constraint] (>> {:e (protocols/translate constraint)}
                                                       "constraint {{e}};")))
                             (interpose "\n")
-                            (apply str))
-        directive-str (if objective
-                        (>> {:e (protocols/translate objective)}
-                            "solve maximize {{e}};")
-                        "solve satisfy;")
+                            (apply str)) 
         merged-decisions (apply
                           api/merge-with-key
                           api/intersect-domains
