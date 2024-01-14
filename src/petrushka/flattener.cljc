@@ -42,9 +42,9 @@
         (assoc
          substitutions
          node
-         (api/force-type 
-          (api/->Decision (str "introduced" (gensym)))
-          type))))))
+         (-> (api/->Decision (str "introduced" (gensym)))
+             (api/force-type type)
+             (api/impl)))))))
 
 (defn post-order-traversal [root? substitutions node] 
   (if (simple-term? node)

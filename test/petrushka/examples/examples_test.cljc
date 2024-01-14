@@ -28,7 +28,7 @@
                               (= (count (clojure.set/intersection a b)) 3)))))
                      (map cluster-free mesos)
                      (map (comp (partial = 4) count) mesos))))
-       solution (satisfy constraint)
+       solution (satisfy constraint) 
        mesos* (map solution mesos)]
    true := 
    (and (every?

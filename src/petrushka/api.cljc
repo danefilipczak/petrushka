@@ -110,6 +110,12 @@
 (defn lexical-decision? [decision]
   (contains? (meta decision) ::lexical))
 
+(defn impl [decision]
+  (with-meta decision (merge (meta decision) {::impl true})))
+
+(defn impl-decision? [decision]
+  (contains? (meta decision) ::impl))
+
 (defn force-type [decision type]
   {:pre [(decision? decision)
          (types/all-decision-types type)]} 

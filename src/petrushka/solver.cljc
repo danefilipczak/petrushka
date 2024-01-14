@@ -61,7 +61,9 @@
        (interleave (sort-by :id (-> decisions keys)))
        (partition 2)
        (map (partial detranspile* decisions))
-       (zipmap (sort-by :id (-> decisions keys)))))
+       (zipmap (sort-by :id (-> decisions keys)))
+       (filter (comp (complement api/impl-decision?) key))
+       (into {})))
 
 (defn expand-all [node]
   ;; todo this is very slow, and potentially incorrect
