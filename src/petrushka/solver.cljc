@@ -63,7 +63,7 @@
        (map (partial detranspile* decisions))
        (zipmap (sort-by :id (-> decisions keys)))))
 
-(defn expand-all [node] 
+(defn expand-all [node]
   ;; todo this is very slow, and potentially incorrect
   ;; what if a term expands to something that itself needs expansion, like an if?
   ;; please correct
@@ -74,6 +74,8 @@
        (protocols/expand n)
        n))
    node))
+
+(def ^:dynamic *flatten?* true)
 
 (defn solve [{:keys [all? async?] :as opts}
              constraint
@@ -87,22 +89,23 @@
                          (when objective (api/cacheing-decisions objective)))
         constraint-with-forced-decisions-and-expanded-terms (clojure.walk/postwalk
                                                              (fn [x]
-                                                               (cond 
-                                                                 (and (api/decision? x) 
-                                                                      (get model-decisions x)) ;; some decisions in the tree are 'local' in the case of introduced statements like forall
+                                                               (cond
+                                                                 (and (api/decision? x)
+                                                                      (not ( api/lexical-decision? x))
+                                                                      #_(get model-decisions x)) ;; some decisions in the tree are 'local' in the case of introduced statements like forall
                                                                  (api/force-type
                                                                   x
                                                                   (types/domain->type
                                                                    (get model-decisions x)))
-                                                                 
+
                                                                  (satisfies? protocols/IExpand x)
                                                                  (expand-all x)
 
                                                                  :else x))
-                                                             constraint) 
-        #_#_constraints (flattener/conjuctive-flattening
-                     constraint-with-forced-decisions-and-expanded-terms)
-        constraints [constraint-with-forced-decisions-and-expanded-terms]
+                                                             constraint)
+        constraints (if *flatten?*
+                      (flattener/conjuctive-flattening constraint-with-forced-decisions-and-expanded-terms)
+                      [constraint-with-forced-decisions-and-expanded-terms])  
         constraint-str (->> constraints
                             (map (fn [constraint] (>> {:e (protocols/translate constraint)}
                                                       "constraint {{e}};")))
@@ -126,8 +129,8 @@
                                        (when objective [(protocols/bindings objective)]))))
         output-str (->output merged-decisions)
         mzn (apply str (interpose "\n" (cond-> var-declarations-str
-                                         constraint-str (conj constraint-str)
-                                         :always (conj output-str directive-str))))
+                                               constraint-str (conj constraint-str)
+                                               :always (conj output-str directive-str))))
         _ (def mzn mzn)]
     (if *debug*
       (do (spit "scratch/mzn" mzn) mzn)
@@ -139,10 +142,10 @@
        (partial detranspile merged-decisions)))))
 
 #_(defn fetch [mzn]
-      (let [temp-file (doto (java.io.File/createTempFile "petrushka" ".mzn") .deleteOnExit)
-            _ (spit temp-file mzn)
-            {:keys [exit out err]} (shell/sh "minizinc" (.getAbsolutePath temp-file) "-a")]
-           (if (not= exit 0)
-               (throw (ex-info err {}))
-               (when (not= out "=====UNSATISFIABLE=====\n") ;; todo - grep for this anywhere in the out string. it might be at the end, or be followed by other text
-                     out))))
+    (let [temp-file (doto (java.io.File/createTempFile "petrushka" ".mzn") .deleteOnExit)
+          _ (spit temp-file mzn)
+          {:keys [exit out err]} (shell/sh "minizinc" (.getAbsolutePath temp-file) "-a")]
+      (if (not= exit 0)
+        (throw (ex-info err {}))
+        (when (not= out "=====UNSATISFIABLE=====\n") ;; todo - grep for this anywhere in the out string. it might be at the end, or be followed by other text
+          out))))

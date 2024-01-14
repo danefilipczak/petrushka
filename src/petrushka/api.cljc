@@ -104,6 +104,12 @@
 
 (def decision? (partial instance? Decision))
 
+(defn lexical [decision]
+  (with-meta decision (merge (meta decision) {::lexical true})))
+
+(defn lexical-decision? [decision]
+  (contains? (meta decision) ::lexical))
+
 (defn force-type [decision type]
   {:pre [(decision? decision)
          (types/all-decision-types type)]} 

@@ -24,6 +24,8 @@
 
 (defn update-sub-map [substitutions node]
   (let [preserve? (or
+                   (some api/lexical-decision? (keys (api/cacheing-decisions node))) 
+
                    (contains? substitutions node)
                    ;; an identical expression has been substituted elsewhere in the tree
                    ;; allowing the existing substitution to remain is a form of common subexpression elimination 
@@ -44,9 +46,9 @@
           (api/->Decision (str "introduced" (gensym)))
           type))))))
 
-(defn post-order-traversal [root substitutions node] 
+(defn post-order-traversal [root? substitutions node] 
   (if (simple-term? node)
-    (if root
+    (if root?
       [node {}]
       (update-sub-map 
        substitutions 
@@ -59,11 +61,13 @@
       (let [node-with-subs (replace-children-recursive
                             substitutions'
                             node)
-            subs (update-sub-map
-                  substitutions'
-                  node-with-subs)]
-        (if root 
-          [(get subs node-with-subs) subs]
+            subs (if root?
+                   substitutions' ;; the root doesn't need to be substituted
+                   (update-sub-map
+                    substitutions'
+                    node-with-subs))]
+        (if root? 
+          [(get subs node-with-subs node-with-subs) subs]
           subs)))))  
 
 (defn conjuctive-flattening [node]
@@ -75,7 +79,7 @@
      root)))
 
 (comment
-  (protocols/write (conjuctive-flattening node))
+  (map protocols/write (conjuctive-flattening node))
   (vals )
   (protocols/write node)
 

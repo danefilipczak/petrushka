@@ -114,13 +114,13 @@
       expr)))
 
 (defmacro ^:introduced forall [[bind set-expr] constraint-expr]
-  `(let [~bind (fresh)]
+  `(let [~bind (api/lexical (fresh))]
      (?> (terms.introduced/forall 
           '~bind  
           [~bind ~set-expr ~constraint-expr]))))
 
 (defmacro ^:introduced for-set [[bind set-expr] generator-expr]
-  `(let [~bind (fresh)]
+  `(let [~bind (api/lexical (fresh))]
      (?> (terms.introduced/for-set
           '~bind
           [~bind ~set-expr ~generator-expr]))))
