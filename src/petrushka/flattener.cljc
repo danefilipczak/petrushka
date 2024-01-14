@@ -68,8 +68,7 @@
 
 (defn conjuctive-flattening [node]
   (def node node)
-  (let [[root subs] (post-order-traversal true {} node)
-        _ (def subs subs)]
+  (let [[root subs] (post-order-traversal true {} node)]
     (conj
      (for [[k v] subs]
        (terms.core/->TermEquals [k v]))
