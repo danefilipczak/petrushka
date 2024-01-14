@@ -8,8 +8,7 @@
 (defn simple-term? [node]
   (not-any? terms.utils/decendents (terms.utils/decendents node)))
 
-(defn replace-children-recursive [subs node]
-  (def xargs [subs node])
+(defn replace-children-recursive [subs node] 
   (clojure.walk/postwalk
    (fn [x] 
      (if (coll? x)
@@ -46,29 +45,26 @@
              (api/force-type type)
              (api/impl)))))))
 
-(defn post-order-traversal [root? substitutions node] 
+(defn post-order-traversal [root? substitutions node]
   (if (simple-term? node)
     (if root?
       [node {}]
-      (update-sub-map 
-       substitutions 
+      (update-sub-map
+       substitutions
        node))
-    (let [substitutions' (reduce 
-                          (partial post-order-traversal false) 
-                          substitutions 
-                          (terms.utils/decendents 
-                           node))]
-      (let [node-with-subs (replace-children-recursive
-                            substitutions'
-                            node)
-            subs (if root?
-                   substitutions' ;; the root doesn't need to be substituted
-                   (update-sub-map
-                    substitutions'
-                    node-with-subs))]
-        (if root? 
-          [(get subs node-with-subs node-with-subs) subs]
-          subs)))))  
+    (let [substitutions' (reduce
+                          (partial post-order-traversal false)
+                          substitutions
+                          (terms.utils/decendents
+                           node))
+          node' (replace-children-recursive
+                 substitutions'
+                 node)]
+      (if root?
+        [node' substitutions']
+        (update-sub-map
+         substitutions'
+         node')))))
 
 (defn conjuctive-flattening [node]
   (def node node)
